@@ -117,17 +117,18 @@ class VoxelizedPointcloud:
                         # the points are projected to the image frame but is blocked by some obstacles
                         depth[valid_xys[:, 0], valid_xys[:, 1]] < (proj_depth - 0.1), 
                         # the points are projected to the image frame but they are behind camera
-                        depth[valid_xys[:, 0], valid_xys[:, 1]] < -0.1],
+                        depth[valid_xys[:, 0], valid_xys[:, 1]] < -0.1,
                         # depth is too large
                         depth[valid_xys[:, 0], valid_xys[:, 1]] > 2
+                    ],
                     dim = 0
                 ),
                 dim = 0)
         
-            voxel_pcd._points = voxel_pcd._points[indices]
-            voxel_pcd._features = voxel_pcd._features[indices]
-            voxel_pcd._weights= voxel_pcd._weights[indices]
-            voxel_pcd._rgb = voxel_pcd._rgb[indices]
+            self._points = self._points[indices]
+            self._features = self._features[indices]
+            self._weights= self._weights[indices]
+            self._rgb = self._rgb[indices]
 
     def add(
         self,
