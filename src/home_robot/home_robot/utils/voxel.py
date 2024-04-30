@@ -119,16 +119,21 @@ class VoxelizedPointcloud:
                         # the points are projected to the image frame but they are behind camera
                         depth[valid_xys[:, 0], valid_xys[:, 1]] < -0.1,
                         # depth is too large
-                        depth[valid_xys[:, 0], valid_xys[:, 1]] > 2
+                        # depth[valid_xys[:, 0], valid_xys[:, 1]] > 2
                     ],
                     dim = 0
                 ),
                 dim = 0)
-        
+
+            print('Clearing non valid points...')
+            print('Removing ' + str((~indices).sum().item()) + ' points.')
             self._points = self._points[indices]
-            self._features = self._features[indices]
-            self._weights= self._weights[indices]
-            self._rgb = self._rgb[indices]
+            if self._features is not None:
+                self._features = self._features[indices]
+            if self._weights is not None:
+                self._weights= self._weights[indices]
+            if self._rgb is not None:
+                self._rgb = self._rgb[indices]
 
     def add(
         self,
