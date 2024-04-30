@@ -289,14 +289,19 @@ class SparseVoxelMap(object):
 
         # Allow task_observations to provide semantic sensor
         def _pop_with_task_obs_default(k, default=None):
+            if task_obs is None:
+                return None
             res = kwargs.pop(k, task_obs.get(k, None))
             if res is not None:
                 res = self.fix_type(res)
             return res
 
-        instance_image = _pop_with_task_obs_default("instance_image")
-        instance_classes = _pop_with_task_obs_default("instance_classes")
-        instance_scores = _pop_with_task_obs_default("instance_scores")
+        if task_obs is not None:
+            instance_image = _pop_with_task_obs_default("instance_image")
+            instance_classes = _pop_with_task_obs_default("instance_classes")
+            instance_scores = _pop_with_task_obs_default("instance_scores")
+        else:
+            instance_image, instance_classes, instance_scores = None, None, None
 
         self.add(
             camera_pose=camera_pose,
@@ -811,6 +816,8 @@ class SparseVoxelMap(object):
 
     def xy_to_grid_coords(self, xy: torch.Tensor) -> Optional[np.ndarray]:
         """convert xy point to grid coords"""
+        if isinstance(xy, list):
+            xy = torch.FloatTensor(xy)
         assert xy.shape[-1] == 2, "coords must be Nx2 or 2d array"
         # Handle convertion
         if isinstance(xy, np.ndarray):

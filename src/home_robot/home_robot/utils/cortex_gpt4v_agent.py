@@ -103,7 +103,7 @@ class CortexGPT4VAgent(BaseAgent):
             }
         )
 
-        plt.suptitle(self.goal)
+        plt.suptitle(f"Prompts that are automatically generated for task: {self.goal}")
         plt.show()
 
         context_messages.append({"type": "text", "text": f"3. Query: {self.goal}\n"})

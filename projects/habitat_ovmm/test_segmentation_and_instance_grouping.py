@@ -4,6 +4,8 @@ import pickle
 
 import numpy as np
 
+from home_robot.core.interfaces import Observations
+
 # with open(root_path + "debug_svm.pkl", "rb") as f:
 #     svm = pickle.load(f)
 
@@ -11,7 +13,7 @@ import numpy as np
 # observations = svm.observations
 # with open(root_path + "annotation.pkl", "rb") as f:
 #     annotation = pickle.load(f)
-with open(root_path + "stretch_output_2024-03-13_15-23-13.pkl", "rb") as f:
+with open("/home/xiaohan/Downloads/robot.pkl", "rb") as f:
     obs_history = pickle.load(f)
 
 # print(annotation["task"])
@@ -25,8 +27,23 @@ with open(root_path + "stretch_output_2024-03-13_15-23-13.pkl", "rb") as f:
 #             key_frames.append(obs)
 #             key_obs.append(obs_history[idx])
 # obs = key_frames[-1]
-key_obs = obs_history["obs"]
-obs = key_obs[-1]
+key_obs = []
+num_obs = len(obs_history["rgb"])
+
+for obs_id in range(num_obs):
+    key_obs.append(
+        Observations(
+            rgb=obs_history["rgb"][obs_id].numpy(),
+            gps=obs_history["base_poses"][obs_id][:2].numpy(),
+            compass=[obs_history["base_poses"][obs_id][2].numpy()],
+            xyz=obs_history["xyz"][obs_id].numpy(),
+            depth=obs_history["depth"][obs_id].numpy(),
+            camera_pose=obs_history["camera_poses"][obs_id].numpy(),
+            camera_K=obs_history["camera_K"][obs_id].numpy(),
+        )
+    )
+if "obs" in obs_history:
+    key_obs = obs_history["obs"]
 
 import time
 from pathlib import Path
@@ -54,7 +71,6 @@ parameters = yaml.safe_load(
     Path("/home/xiaohan/home-robot/src/home_robot_sim/configs/gpt4v.yaml").read_text()
 )
 config, semantic_sensor = create_semantic_sensor()
-semantic_sensor
 
 # parameters = get_parameters(cfg.agent_parameters)
 encoder = get_encoder(parameters["encoder"], parameters["encoder_args"])
@@ -72,18 +88,20 @@ voxel_map = SparseVoxelMap(
         "remove_visited_from_obstacles", False
     ),
     obs_min_density=parameters["obs_min_density"],
-    smooth_kernel_size=parameters["smooth_kernel_size"],
     encoder=encoder,
-    use_median_filter=parameters.get("use_median_filter", False),
-    median_filter_size=parameters.get("median_filter_size", 5),
-    median_filter_max_error=parameters.get("median_filter_max_error", 0.01),
-    use_derivative_filter=parameters.get("use_derivative_filter", False),
-    derivative_filter_threshold=parameters.get("derivative_filter_threshold", 0.5),
+    smooth_kernel_size=parameters.get("filters/smooth_kernel_size", -1),
+    use_median_filter=parameters.get("filters/use_median_filter", False),
+    median_filter_size=parameters.get("filters/median_filter_size", 5),
+    median_filter_max_error=parameters.get("filters/median_filter_max_error", 0.01),
+    use_derivative_filter=parameters.get("filters/use_derivative_filter", False),
+    derivative_filter_threshold=parameters.get(
+        "filters/derivative_filter_threshold", 0.5
+    ),
     instance_memory_kwargs={
         "min_pixels_for_instance_view": parameters.get(
             "min_pixels_for_instance_view", 100
         ),
-        "min_instance_thickness": parameters.get("min_instance_thickness", 0.05),
+        "min_instance_thickness": parameters.get("min_instance_thickness", 0.01),
         "min_instance_vol": parameters.get("min_instance_vol", 1e-6),
         "max_instance_vol": parameters.get("max_instance_vol", 10.0),
         "min_instance_height": parameters.get("min_instance_height", 0.1),
@@ -93,7 +111,8 @@ voxel_map = SparseVoxelMap(
 )
 
 voxel_map.reset()
-key_obs = [key_obs[5]]
+# key_obs = key_obs[::4]
+key_obs = [key_obs[40]]
 for idx, obs in enumerate(key_obs):
 
     image_array = np.array(obs.rgb, dtype=np.uint8)
@@ -102,10 +121,10 @@ for idx, obs in enumerate(key_obs):
 
     obs = semantic_sensor.predict(obs)
     voxel_map.add_obs(obs)
-voxel_map.extract_symbolic_spatial_info()
-# voxel_map.show(
-#     instances=True,
-#     height=1000,
-#     boxes_plot_together=False,
-#     backend="open3d",
-# )
+
+voxel_map.show(
+    instances=True,
+    height=1000,
+    boxes_plot_together=False,
+    backend="open3d",
+)

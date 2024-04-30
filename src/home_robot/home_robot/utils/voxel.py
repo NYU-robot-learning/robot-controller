@@ -17,12 +17,17 @@ from torch_geometric.nn.pool.consecutive import consecutive_cluster
 from torch_geometric.nn.pool.voxel_grid import voxel_grid
 from torch_geometric.utils import add_self_loops, scatter
 
+
 def project_points(points_3d, K, pose):
     # Convert points to homogeneous coordinates
-    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1))))
+    points_3d_homogeneous = torch.hstack(
+        (points_3d, torch.ones((points_3d.shape[0], 1)))
+    )
 
     # Transform points into camera coordinate system
-    points_camera_homogeneous = torch.matmul(torch.linalg.inv(pose), points_3d_homogeneous.T).T
+    points_camera_homogeneous = torch.matmul(
+        torch.linalg.inv(pose), points_3d_homogeneous.T
+    ).T
     points_camera_homogeneous = points_camera_homogeneous[:, :3]
 
     # Project points into image plane
@@ -31,17 +36,23 @@ def project_points(points_3d, K, pose):
 
     return points_2d
 
+
 def get_depth_values(points_3d, pose):
     # Convert points to homogeneous coordinates
-    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1))))
+    points_3d_homogeneous = torch.hstack(
+        (points_3d, torch.ones((points_3d.shape[0], 1)))
+    )
 
     # Transform points into camera coordinate system
-    points_camera_homogeneous = torch.matmul(torch.linalg.inv(pose), points_3d_homogeneous.T).T
+    points_camera_homogeneous = torch.matmul(
+        torch.linalg.inv(pose), points_3d_homogeneous.T
+    ).T
 
     # Extract depth values (z-coordinates)
     depth_values = points_camera_homogeneous[:, 2]
 
     return depth_values
+
 
 class VoxelizedPointcloud:
     _INTERNAL_TENSORS = [
@@ -98,24 +109,29 @@ class VoxelizedPointcloud:
             xys = xys[:, [1, 0]]
             proj_depth = get_depth_values(self._points, pose)
             H, W = depth.shape
-            
+
             # Some points are projected to (i, j) on image plane and i, j might be smaller than 0 or greater than image size
             # which will lead to Index Error.
             valid_xys = xys.clone()
-            valid_xys[torch.any(torch.stack([
-                    xys[:, 0] < 0, 
-                    xys[:, 0] >= H, 
-                    xys[:, 1] < 0, 
-                    xys[:, 1] >= W
-                ], dim = 0), dim = 0)] = 0
+            valid_xys[
+                torch.any(
+                    torch.stack(
+                        [xys[:, 0] < 0, xys[:, 0] >= H, xys[:, 1] < 0, xys[:, 1] >= W],
+                        dim=0,
+                    ),
+                    dim=0,
+                )
+            ] = 0
             indices = torch.any(
                 torch.stack(
                     [
                         # the points are projected outside image frame
-                        xys[:, 0] < 0, xys[:, 0] >= H, 
-                        xys[:, 1] < 0, xys[:, 1] >= W, 
+                        xys[:, 0] < 0,
+                        xys[:, 0] >= H,
+                        xys[:, 1] < 0,
+                        xys[:, 1] >= W,
                         # the points are projected to the image frame but is blocked by some obstacles
-                        depth[valid_xys[:, 0], valid_xys[:, 1]] < (proj_depth - 0.1), 
+                        depth[valid_xys[:, 0], valid_xys[:, 1]] < proj_depth + 0.1,
                         # the points are projected to the image frame but they are behind camera
                         depth[valid_xys[:, 0], valid_xys[:, 1]] < -0.1,
                         # depth is too large

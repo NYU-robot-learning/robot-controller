@@ -11,12 +11,11 @@ import numpy as np
 
 # from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 import rclpy
-import sophus as sp
+import ros2_numpy
+import sophuspy as sp
 import tf2_ros
 from control_msgs.action import FollowJointTrajectory
 from geometry_msgs.msg import PointStamped, Pose, PoseStamped, Twist
-from home_robot.motion.stretch import STRETCH_HEAD_CAMERA_ROTATIONS, HelloStretchIdx
-from home_robot.utils.pose import to_matrix
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
 from rclpy.clock import ClockType
@@ -31,7 +30,8 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from trajectory_msgs.msg import JointTrajectoryPoint
 
-import ros2_numpy
+from home_robot.motion.stretch import STRETCH_HEAD_CAMERA_ROTATIONS, HelloStretchIdx
+from home_robot.utils.pose import to_matrix
 from robot_hw_python.constants import (
     CONFIG_TO_ROS,
     ROS_ARM_JOINTS,
@@ -45,8 +45,8 @@ from robot_hw_python.ros.lidar import RosLidar
 from robot_hw_python.ros.utils import matrix_from_pose_msg
 from robot_hw_python.ros.visualizer import Visualizer
 
-DEFAULT_COLOR_TOPIC = "/camera/camera/color"
-DEFAULT_DEPTH_TOPIC = "/camera/camera/depth"
+DEFAULT_COLOR_TOPIC = "/camera/color"
+DEFAULT_DEPTH_TOPIC = "/camera/aligned_depth_to_color"
 DEFAULT_LIDAR_TOPIC = "/scan"
 
 
@@ -127,7 +127,8 @@ class StretchRosInterface(Node):
         self._lidar_topic = DEFAULT_LIDAR_TOPIC if lidar_topic is None else lidar_topic
         self._depth_buffer_size = depth_buffer_size
 
-        self.rgb_cam, self.dpt_cam = None, None
+        self.rgb_cam: RosCamera = None
+        self.dpt_cam: RosCamera = None
         if init_cameras:
             self._create_cameras()
             self._wait_for_cameras()
@@ -152,7 +153,9 @@ class StretchRosInterface(Node):
             arm_joint_goal = joint_goals.pop(self.ARM_JOINT)
 
             for arm_joint_name in self.ARM_JOINTS_ACTUAL:
-                joint_goals[arm_joint_name] = arm_joint_goal / len(self.ARM_JOINTS_ACTUAL)
+                joint_goals[arm_joint_name] = arm_joint_goal / len(
+                    self.ARM_JOINTS_ACTUAL
+                )
 
         # Preprocess base translation joint (stretch_driver errors out if translation value is 0)
         if self.BASE_TRANSLATION_JOINT in joint_goals:
@@ -174,7 +177,9 @@ class StretchRosInterface(Node):
 
         # Construct goal msg
         goal_msg = FollowJointTrajectory.Goal()
-        goal_msg.goal_time_tolerance = Duration(seconds=self.goal_time_tolerance).to_msg()
+        goal_msg.goal_time_tolerance = Duration(
+            seconds=self.goal_time_tolerance
+        ).to_msg()
         goal_msg.trajectory.joint_names = joint_names
         goal_msg.trajectory.points = [point_msg]
         goal_msg.trajectory.header.stamp = self.get_clock().now().to_msg()
@@ -195,11 +200,11 @@ class StretchRosInterface(Node):
         #     f"Entering while loop with as future done is - {self.goal_handle_future.done()}"
         # )
         while self.goal_handle is None:
-            self.get_logger().info(f"Sleeping for Goal handle future")
+            # self.get_logger().info(f"Sleeping for Goal handle future")
             rate.sleep()
-        self.get_logger().info(f"Waiting for result")
+        # self.get_logger().info(f"Waiting for result")
         self.goal_handle.get_result()
-        self.get_logger().info(f"Action is done")
+        # self.get_logger().info(f"Action is done")
         # self.action_done_event.wait()
         # rclpy.spin_until_future_complete(self, self.goal_handle_future)
         # self.goal_handle.get_result()
@@ -214,15 +219,20 @@ class StretchRosInterface(Node):
                 (self.get_clock().now() - self._goal_reset_t) * 1e-9,
                 self.msg_delay_t,
             )
-            print(" - 2", (self.dpt_cam.get_time() - self._goal_reset_t) * 1e-9, seconds)
+            print(
+                " - 2", (self.dpt_cam.get_time() - self._goal_reset_t) * 1e-9, seconds
+            )
         if (
             self._goal_reset_t is not None
-            and (self.get_clock().now() - self._goal_reset_t).nanoseconds * 1e-9 > self.msg_delay_t
+            and (self.get_clock().now() - self._goal_reset_t).nanoseconds * 1e-9
+            > self.msg_delay_t
         ):
             # self.get_logger().info(
             #     f"Two Times {self.dpt_cam.get_time()}, {self._goal_reset_t}, {seconds}"
             # )
-            return (self.dpt_cam.get_time().sec - self._goal_reset_t.nanoseconds * 1e-9) > seconds
+            return (
+                self.dpt_cam.get_time().sec - self._goal_reset_t.nanoseconds * 1e-9
+            ) > seconds
         else:
             return False
 
@@ -231,7 +241,9 @@ class StretchRosInterface(Node):
     ) -> FollowJointTrajectory.Goal:
         """Create a joint trajectory goal to move the arm."""
         trajectory_goal = FollowJointTrajectory.Goal()
-        trajectory_goal.goal_time_tolerance = Duration(seconds=self.goal_time_tolerance).to_msg()
+        trajectory_goal.goal_time_tolerance = Duration(
+            seconds=self.goal_time_tolerance
+        ).to_msg()
         trajectory_goal.trajectory.joint_names = self.ros_joint_names
         trajectory_goal.trajectory.points = [self._config_to_ros_msg(q, dq, ddq)]
         trajectory_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
@@ -269,7 +281,9 @@ class StretchRosInterface(Node):
             "goto_controller/enable",
         )
         self.goto_off_service = self.create_client(Trigger, "goto_controller/disable")
-        self.set_yaw_service = self.create_client(SetBool, "goto_controller/set_yaw_tracking")
+        self.set_yaw_service = self.create_client(
+            SetBool, "goto_controller/set_yaw_tracking"
+        )
         print("Wait for mode service...")
         self.pos_mode_service.wait_for_service()
 
@@ -313,7 +327,9 @@ class StretchRosInterface(Node):
         )  # Had to check qos_profile
 
         # Create subscribers
-        self._odom_sub = self.create_subscription(Odometry, "odom", self._odom_callback, 1)
+        self._odom_sub = self.create_subscription(
+            Odometry, "odom", self._odom_callback, 1
+        )
         self._base_state_sub = self.create_subscription(
             PoseStamped, "state_estimator/pose_filtered", self._base_state_callback, 1
         )
@@ -323,14 +339,18 @@ class StretchRosInterface(Node):
         self._at_goal_sub = self.create_subscription(
             Bool, "goto_controller/at_goal", self._at_goal_callback, 1
         )
-        self._mode_sub = self.create_subscription(String, "mode", self._mode_callback, 1)
+        self._mode_sub = self.create_subscription(
+            String, "mode", self._mode_callback, 1
+        )
 
         # Create trajectory client with which we can control the robot
         self.trajectory_client = ActionClient(
             self, FollowJointTrajectory, "/stretch_controller/follow_joint_trajectory"
         )  # Doubt action type
 
-        self._js_lock = threading.Lock()  # store latest joint state message - lock for access
+        self._js_lock = (
+            threading.Lock()
+        )  # store latest joint state message - lock for access
         self._joint_state_subscriber = self.create_subscription(
             JointState, "stretch/joint_states", self._js_callback, 100
         )
@@ -352,7 +372,9 @@ class StretchRosInterface(Node):
         if self.rgb_cam is not None or self.dpt_cam is not None:
             raise RuntimeError("Already created cameras")
         print("Creating cameras...")
-        self.rgb_cam = RosCamera(self, self._color_topic, rotations=STRETCH_HEAD_CAMERA_ROTATIONS)
+        self.rgb_cam = RosCamera(
+            self, self._color_topic, rotations=STRETCH_HEAD_CAMERA_ROTATIONS
+        )
         self.dpt_cam = RosCamera(
             self,
             self._depth_topic,
@@ -456,7 +478,9 @@ class StretchRosInterface(Node):
     def get_frame_pose(self, frame, base_frame=None, lookup_time=None, timeout_s=None):
         """look up a particular frame in base coords (or some other coordinate frame)."""
         if lookup_time is None:
-            lookup_time = Time(clock_type=ClockType.ROS_TIME)  # return most recent transform
+            lookup_time = Time(
+                clock_type=ClockType.ROS_TIME
+            )  # return most recent transform
         if timeout_s is None:
             timeout_ros = Duration(seconds=0.1)
         else:
@@ -473,7 +497,9 @@ class StretchRosInterface(Node):
             return None
         return pose_mat
 
-    def _construct_single_joint_ros_goal(self, joint_name, position, goal_time_tolerance=1):
+    def _construct_single_joint_ros_goal(
+        self, joint_name, position, goal_time_tolerance=1
+    ):
         trajectory_goal = FollowJointTrajectory.Goal()
         trajectory_goal.goal_time_tolerance = Duration(seconds=goal_time_tolerance)
         trajectory_goal.trajectory.joint_names = [
@@ -486,7 +512,9 @@ class StretchRosInterface(Node):
         return trajectory_goal
 
     def goto_x(self, x, wait=False, verbose=True):
-        trajectory_goal = self._construct_single_joint_ros_goal("translate_mobile_base", x)
+        trajectory_goal = self._construct_single_joint_ros_goal(
+            "translate_mobile_base", x
+        )
         if wait:
             self.trajectory_client.send_goal(trajectory_goal)
         else:
@@ -499,7 +527,9 @@ class StretchRosInterface(Node):
         return True
 
     def goto_theta(self, theta, wait=False, verbose=True):
-        trajectory_goal = self._construct_single_joint_ros_goal("rotate_mobile_base", theta)
+        trajectory_goal = self._construct_single_joint_ros_goal(
+            "rotate_mobile_base", theta
+        )
         if wait:
             self.trajectory_client.send_goal(trajectory_goal)
         else:
@@ -517,7 +547,9 @@ class StretchRosInterface(Node):
         if abs(delta_position) > 0:  # self.exec_tol[HelloStretchIdx.LIFT]:
             position = self.pos[HelloStretchIdx.LIFT] + delta_position
             if position > 0.1 and position < 1:
-                trajectory_goal = self._construct_single_joint_ros_goal("joint_lift", position)
+                trajectory_goal = self._construct_single_joint_ros_goal(
+                    "joint_lift", position
+                )
                 if wait:
                     self.trajectory_client.send_goal(trajectory_goal)
                 else:
@@ -533,7 +565,9 @@ class StretchRosInterface(Node):
     def goto_arm_position(self, delta_position, wait=False):
         if abs(delta_position) > 0:  # self.exec_tol[HelloStretchIdx.ARM]:
             position = self.pos[HelloStretchIdx.ARM] + delta_position
-            trajectory_goal = self._construct_single_joint_ros_goal("wrist_extension", position)
+            trajectory_goal = self._construct_single_joint_ros_goal(
+                "wrist_extension", position
+            )
             if wait:
                 self.trajectory_client.send_goal(trajectory_goal)
             else:
@@ -546,7 +580,9 @@ class StretchRosInterface(Node):
     def goto_wrist_yaw_position(self, delta_position, wait=False):
         if abs(delta_position) > 0:  # self.exec_tol[HelloStretchIdx.WRIST_YAW]:
             position = self.pos[HelloStretchIdx.WRIST_YAW] + delta_position
-            trajectory_goal = self._construct_single_joint_ros_goal("joint_wrist_yaw", position)
+            trajectory_goal = self._construct_single_joint_ros_goal(
+                "joint_wrist_yaw", position
+            )
             if wait:
                 self.trajectory_client.send_goal(trajectory_goal)
             else:
@@ -559,7 +595,9 @@ class StretchRosInterface(Node):
     def goto_wrist_roll_position(self, delta_position, wait=False):
         if abs(delta_position) > 0:  # self.exec_tol[HelloStretchIdx.WRIST_ROLL]:
             position = self.pos[HelloStretchIdx.WRIST_ROLL] + delta_position
-            trajectory_goal = self._construct_single_joint_ros_goal("joint_wrist_roll", position)
+            trajectory_goal = self._construct_single_joint_ros_goal(
+                "joint_wrist_roll", position
+            )
             if wait:
                 self.trajectory_client.send_goal(trajectory_goal)
             else:
@@ -572,7 +610,9 @@ class StretchRosInterface(Node):
     def goto_wrist_pitch_position(self, delta_position, wait=False):
         if abs(delta_position) > 0:  # self.exec_tol[HelloStretchIdx.WRIST_PITCH]:
             position = self.pos[HelloStretchIdx.WRIST_PITCH] + delta_position
-            trajectory_goal = self._construct_single_joint_ros_goal("joint_wrist_pitch", position)
+            trajectory_goal = self._construct_single_joint_ros_goal(
+                "joint_wrist_pitch", position
+            )
             if wait:
                 self.trajectory_client.send_goal(trajectory_goal)
             else:
@@ -602,7 +642,9 @@ class StretchRosInterface(Node):
     def goto_head_pan_position(self, delta_position, wait=False):
         if abs(delta_position) > 0:  # self.exec_tol[HelloStretchIdx.HEAD_PAN]:
             position = self.pos[HelloStretchIdx.HEAD_PAN] + delta_position
-            trajectory_goal = self._construct_single_joint_ros_goal("joint_head_pan", position)
+            trajectory_goal = self._construct_single_joint_ros_goal(
+                "joint_head_pan", position
+            )
             if wait:
                 self.trajectory_client.send_goal(trajectory_goal)
             else:
@@ -615,7 +657,9 @@ class StretchRosInterface(Node):
     def goto_head_tilt_position(self, delta_position, wait=False):
         if abs(delta_position) > 0:  # self.exec_tol[HelloStretchIdx.HEAD_TILT]:
             position = self.pos[HelloStretchIdx.HEAD_TILT] + delta_position
-            trajectory_goal = self._construct_single_joint_ros_goal("joint_head_tilt", position)
+            trajectory_goal = self._construct_single_joint_ros_goal(
+                "joint_head_tilt", position
+            )
             if wait:
                 self.trajectory_client.send_goal(trajectory_goal)
             else:

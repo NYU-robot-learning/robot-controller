@@ -509,6 +509,10 @@ class SparseVoxelMapNavigationSpace(XYT):
             expand_size=expand_size, debug=debug
         )
 
+        # Convert xyt into a list if necessary - as a convenience
+        if isinstance(xyt, list):
+            xyt = np.array(xyt)
+
         # from scipy.ndimage.morphology import distance_transform_edt
         m = np.ones_like(traversible)
         start_x, start_y = self.voxel_map.xy_to_grid_coords(xyt[:2]).int().cpu().numpy()

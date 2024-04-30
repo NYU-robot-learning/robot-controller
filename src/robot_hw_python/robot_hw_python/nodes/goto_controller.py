@@ -8,7 +8,7 @@ from typing import Optional
 
 import numpy as np
 import rclpy
-import sophus as sp
+import sophuspy as sp
 from geometry_msgs.msg import Pose, PoseStamped, Twist
 from home_robot.control.goto_controller import GotoVelocityController
 from home_robot.utils.config import get_control_config
