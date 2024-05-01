@@ -39,6 +39,40 @@ from torch_geometric.nn.pool.consecutive import consecutive_cluster
 from torch_geometric.nn.pool.voxel_grid import voxel_grid
 from torch_geometric.utils import add_self_loops, scatter
 
+def project_points(points_3d, K, pose):
+    if not isinstance(K, torch.Tensor):
+        K = torch.Tensor(K)
+    K = K.to(points_3d)
+    if not isinstance(pose, torch.Tensor):
+        pose = torch.Tensor(pose)
+    pose = pose.to(points_3d)
+    # Convert points to homogeneous coordinates
+    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1)).to(points_3d)))
+
+    # Transform points into camera coordinate system
+    points_camera_homogeneous = torch.matmul(torch.linalg.inv(pose), points_3d_homogeneous.T).T
+    points_camera_homogeneous = points_camera_homogeneous[:, :3]
+
+    # Project points into image plane
+    points_2d_homogeneous = torch.matmul(K, points_camera_homogeneous.T).T
+    points_2d = points_2d_homogeneous[:, :2] / points_2d_homogeneous[:, 2:]
+
+    return points_2d
+
+def get_depth_values(points_3d, pose):
+    # Convert points to homogeneous coordinates
+    if not isinstance(pose, torch.Tensor):
+        pose = torch.Tensor(pose)
+    pose = pose.to(points_3d)
+    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1)).to(points_3d)))
+
+    # Transform points into camera coordinate system
+    points_camera_homogeneous = torch.matmul(torch.linalg.inv(pose), points_3d_homogeneous.T).T
+
+    # Extract depth values (z-coordinates)
+    depth_values = points_camera_homogeneous[:, 2]
+
+    return depth_values
 
 class VoxelizedPointcloud:
     _INTERNAL_TENSORS = [
@@ -88,6 +122,49 @@ class VoxelizedPointcloud:
         self._points, self._features, self._weights, self._rgb = None, None, None, None
         self._mins = self.dim_mins
         self._maxs = self.dim_maxs
+
+    def clear_points(self, depth, intrinsics, pose):
+        if self._points is not None:
+            xys = project_points(self._points, intrinsics, pose).int()
+            xys = xys[:, [1, 0]]
+            proj_depth = get_depth_values(self._points, pose)
+            H, W = depth.shape
+            
+            # Some points are projected to (i, j) on image plane and i, j might be smaller than 0 or greater than image size
+            # which will lead to Index Error.
+            valid_xys = xys.clone()
+            valid_xys[torch.any(torch.stack([
+                    xys[:, 0] < 0, 
+                    xys[:, 0] >= H, 
+                    xys[:, 1] < 0, 
+                    xys[:, 1] >= W
+                ], dim = 0), dim = 0)] = 0
+            indices = torch.any(
+                torch.stack(
+                    [
+                        # the points are projected outside image frame
+                        xys[:, 0] < 0, xys[:, 0] >= H, 
+                        xys[:, 1] < 0, xys[:, 1] >= W, 
+                        # the points are projected to the image frame but is blocked by some obstacles
+                        depth[valid_xys[:, 0], valid_xys[:, 1]] < (proj_depth - 0.1), 
+                        # the points are projected to the image frame but they are behind camera
+                        depth[valid_xys[:, 0], valid_xys[:, 1]] < -0.1,
+                        # depth is too large
+                        # depth[valid_xys[:, 0], valid_xys[:, 1]] > 2
+                    ],
+                    dim = 0
+                ),
+                dim = 0)
+        
+            print('Clearing non valid points...')
+            print('Removing ' + str((~indices).sum()) + ' points.')
+            self._points = self._points[indices]
+            if self._features is not None:
+                self._features = self._features[indices]
+            if self._weights is not None:
+                self._weights= self._weights[indices]
+            if self._rgb is not None:
+                self._rgb = self._rgb[indices]
 
     def add(
         self,

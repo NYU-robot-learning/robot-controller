@@ -53,7 +53,7 @@ class ViewMatchingConfig:
     box_overlap_weight: float = 0.15
 
     visual_similarity_weight: float = 1.0
-    min_similarity_thresh: float = 0.8
+    min_similarity_thresh: float = 0.85
 
 
 def get_similarity(

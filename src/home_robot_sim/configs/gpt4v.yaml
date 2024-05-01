@@ -14,7 +14,7 @@ smooth_kernel_size: 0
 min_instance_thickness: 0.01 # filter out instances that are too flat like floors, walls etc
 min_instance_vol: 1e-4 # filter out instances that are of too small volume
 max_instance_vol: 0.5 # filter out instances that are too large
-min_instance_height: 0.2
+min_instance_height: 0.4
 max_instance_height: 1.5
 # open_vocab_cat_map_file: projects/real_world_ovmm/configs/open_vocab_cat_map.json
 open_vocab_cat_map_file: projects/real_world_ovmm/configs/example_cat_map.json
@@ -25,9 +25,9 @@ min_pad_obstacles: 1  # Do not pad LESS than this amount, for safety.
 
 remove_visited_from_obstacles: False
 min_depth: 0.0
-max_depth: 10.0
+max_depth: 2.5
 
-min_pixels_for_instance_view: 1000
+min_pixels_for_instance_view: 100
 
 # Point cloud cleanup - point clouds in simulation are perfect, no need for this
 filters:
@@ -44,7 +44,7 @@ in_place_rotation_steps: 8
 
 # TAMP parameters
 guarantee_instance_is_reachable: True
-plan_with_reachable_instances: True
+plan_with_reachable_instances: False # disable motion-planning checking to speedup
 plan_with_scene_graph: True
 max_near_distance: 0.3
 
@@ -72,7 +72,7 @@ trajectory_per_step_timeout: 3.0
 name: "stretch_demo"  # for logging - currently not used
 chat: False
 start_ui_server: False
-vlm_context_length: 10  # How long messages sent to the vlm server can be if we are using it
+vlm_context_length: 20  # How long messages sent to the vlm server can be if we are using it
 limited_obs_publish_sleep: 0.5
 
 # High level stuff: commands to execute 
@@ -85,7 +85,7 @@ exploration_steps: 10 # we can potentially increase it to 150 for sim
 # VLM Query parameters
 sample_strategy: "clip"
 vlm_option: gpt4v
-replanning: True # if replanning is True, the robot agent will memorize the task that is given at the first place
+replanning: False # if replanning is True, the robot agent will memorize the task that is given at the first place
 save_vlm_plan: True
 
 # some parameters in sim

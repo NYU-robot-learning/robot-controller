@@ -86,11 +86,11 @@ def main(
         robot, parameters
     )
 
-    robot1 = StretchClient()
     def send_image():
         while True:
-            obs = robot1.get_observation()
-            demo.image_sender.send_images(obs)
+            if robot.nav._is_enabled:
+                obs = robot.get_observation()
+                demo.image_sender.send_images(obs)
 
     img_thread = threading.Thread(target=send_image)
     img_thread.daemon = True
@@ -101,9 +101,9 @@ def main(
         demo.voxel_map.read_from_pickle(filename = input_path)
         print('finish reading from old pickle file')
     else:
-        demo.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
+        # demo.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
         demo.rotate_in_place()
-        demo.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
+        # demo.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
         demo.rotate_in_place()
 
         demo.run_exploration(

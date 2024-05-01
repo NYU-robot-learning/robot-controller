@@ -9,7 +9,7 @@ from typing import List, Optional
 
 import numpy as np
 import rospy
-import sophus as sp
+import sophuspy as sp
 from geometry_msgs.msg import Pose, PoseStamped, Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool, Float32

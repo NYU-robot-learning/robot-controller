@@ -10,8 +10,8 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     stretch_navigation_path = get_package_share_directory("stretch_nav2")
-    start_robot_arg = DeclareLaunchArgument("start_robot", default_value="false")
-    rviz_arg = DeclareLaunchArgument("rviz", default_value="false")
+    # start_robot_arg = DeclareLaunchArgument("start_robot", default_value="false")
+    # rviz_arg = DeclareLaunchArgument("rviz", default_value="false")
 
     declare_use_sim_time_argument = DeclareLaunchArgument(
         "use_sim_time", default_value="false", description="Use simulation/Gazebo clock"
@@ -28,7 +28,8 @@ def generate_launch_description():
     stretch_driver_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
-                get_package_share_directory("stretch_core"), "launch/stretch_driver.launch.py"
+                get_package_share_directory("stretch_core"),
+                "launch/stretch_driver.launch.py",
             )
         ),
         launch_arguments={"mode": "navigation", "broadcast_odom_tf": "True"}.items(),
@@ -36,13 +37,18 @@ def generate_launch_description():
 
     realsense_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory("realsense2_camera"), "launch/rs_launch.py")
-        )
+            os.path.join(
+                get_package_share_directory("realsense2_camera"), "launch/rs_launch.py"
+            )
+        ),
+        launch_arguments={"align_depth.enable": "True"}.items(),
     )
 
     lidar_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory("stretch_core"), "launch/rplidar.launch.py")
+            os.path.join(
+                get_package_share_directory("stretch_core"), "launch/rplidar.launch.py"
+            )
         )
     )
 
@@ -70,7 +76,9 @@ def generate_launch_description():
     # )
 
     camera_pose_publisher_node = Node(
-        package="robot_hw_python", executable="camera_pose_publisher", name="camera_pose_publisher"
+        package="robot_hw_python",
+        executable="camera_pose_publisher",
+        name="camera_pose_publisher",
     )
 
     state_estimator_node = Node(

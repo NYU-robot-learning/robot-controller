@@ -116,7 +116,9 @@ class SAMPerception(PerceptionModule):
         """
         self.custom_vocabulary = new_vocab
 
-    def generate(self, image, min_area=1000):
+    def generate(
+        self, image, min_area=500
+    ):  # TODO: figure out how to set min_area in config
         masks = self.mask_generator.generate(image)
         returned_masks = []
         for mask in masks:
@@ -173,7 +175,6 @@ class SAMPerception(PerceptionModule):
         #     image_array = np.array(mm * image, dtype=np.uint8)
         #     image_debug = Image.fromarray(image_array)
         #     image_debug.show()
-        #     breakpoint()
 
         # plt.figure(figsize=(20, 20))
         # plt.imshow(image)

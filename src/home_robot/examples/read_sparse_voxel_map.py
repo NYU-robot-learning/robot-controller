@@ -11,11 +11,14 @@ from pathlib import Path
 import click
 import matplotlib.pyplot as plt
 import numpy as np
+from PIL import Image
 
 from home_robot.agent.multitask import get_parameters
 from home_robot.agent.multitask.robot_agent import RobotAgent
+from home_robot.core.interfaces import Observations
 from home_robot.mapping import SparseVoxelMap, SparseVoxelMapNavigationSpace
 from home_robot.mapping.voxel import plan_to_frontier
+from home_robot.perception import create_semantic_sensor
 from home_robot.utils.dummy_stretch_client import DummyStretchClient
 from home_robot.utils.geometry import xyt_global_to_base
 
@@ -29,6 +32,36 @@ def plan_to_deltas(xyt0, plan):
         nonzero = np.abs(dxyt) > tol
         assert np.sum(nonzero) <= 1, "only one value should change in the trajectory"
         xyt0 = xyt1
+
+
+def add_raw_obs_to_voxel_map(obs_history, voxel_map):
+    key_obs = []
+    num_obs = len(obs_history["rgb"])
+
+    for obs_id in range(num_obs):
+        key_obs.append(
+            Observations(
+                rgb=obs_history["rgb"][obs_id].numpy(),
+                gps=obs_history["base_poses"][obs_id][:2].numpy(),
+                compass=[obs_history["base_poses"][obs_id][2].numpy()],
+                xyz=obs_history["xyz"][obs_id].numpy(),
+                depth=obs_history["depth"][obs_id].numpy(),
+                camera_pose=obs_history["camera_poses"][obs_id].numpy(),
+                camera_K=obs_history["camera_K"][obs_id].numpy(),
+            )
+        )
+    config, semantic_sensor = create_semantic_sensor()
+    voxel_map.reset()
+    key_obs = key_obs[::2]  # TODO: set frame skip param in config
+    # key_obs = key_obs[35:38]
+    for idx, obs in enumerate(key_obs):
+        # image_array = np.array(obs.rgb, dtype=np.uint8)
+        # image = Image.fromarray(image_array)
+        # image.show()
+        obs = semantic_sensor.predict(obs)
+        voxel_map.add_obs(obs)
+    print(len(voxel_map.get_instances()))
+    return voxel_map
 
 
 @click.command()
@@ -60,12 +93,14 @@ def plan_to_deltas(xyt0, plan):
 @click.option("--test-vlm", type=bool, is_flag=True, default=False)
 @click.option("--show-instances", type=bool, is_flag=True, default=False)
 @click.option("--query", "-q", type=str, default="")
+@click.option("--pkl-not-obs", "-p", type=bool, is_flag=True, default=False)
 def main(
     input_path,
     config_path,
     voxel_size: float = 0.01,
     show_maps: bool = True,
     pkl_is_svm: bool = True,
+    pkl_not_obs: bool = False,
     test_planning: bool = False,
     test_sampling: bool = False,
     test_vlm: bool = False,
@@ -102,7 +137,15 @@ def main(
             voxel_map=loaded_voxel_map,
         )
         voxel_map = agent.voxel_map
-        if not pkl_is_svm:
+
+        if pkl_not_obs:
+            print(
+                "Reading from pkl file that doesn't include homerobot observations..."
+            )
+            obs_history = pickle.load(input_path.open("rb"))
+            voxel_map = add_raw_obs_to_voxel_map(obs_history, voxel_map)
+
+        elif not pkl_is_svm:
             print("Reading from pkl file of raw observations...")
             voxel_map.read_from_pickle(input_path, num_frames=frame)
     else:
@@ -111,7 +154,7 @@ def main(
 
     # TODO: read this from file or something
     # x0 = np.array([0, 0, 0])
-    x0 = np.array([1, 0, 0])
+    x0 = np.array([1, -3, 0])
     # x0 = np.array([2.6091852, 3.2328937, 0.8379814])
     # x0 = np.array([3.1000001, 0.0, 4.2857614])
     # x0 = np.array([0.0, -0.0, 1.5707968])

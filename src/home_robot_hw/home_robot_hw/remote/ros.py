@@ -10,7 +10,7 @@ import actionlib
 import numpy as np
 import ros_numpy
 import rospy
-import sophus as sp
+import sophuspy as sp
 import tf2_ros
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from geometry_msgs.msg import PointStamped, Pose, PoseStamped, Twist

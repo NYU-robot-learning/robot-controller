@@ -161,7 +161,8 @@ class ImageProcessor:
             self.mask_predictor = SamPredictor(sam)
             self.mask_predictor.model = self.mask_predictor.model.eval().to(self.device)
             self.texts = [['a photo of ' + text for text in CLASS_LABELS_200]]
-        self.voxel_map_localizer = VoxelMapLocalizer(device = self.device)
+        # self.voxel_map_localizer = VoxelMapLocalizer(device = self.device)
+        self.voxel_map_localizer = VoxelMapLocalizer(device = 'cpu')
         if self.pcd_path is not None:
             print('Loading old semantic memory')
             self.voxel_map_localizer.voxel_pcd = torch.load(self.pcd_path)
@@ -375,6 +376,9 @@ class ImageProcessor:
 
         rgb, depth = torch.from_numpy(rgb), torch.from_numpy(depth)
         rgb = rgb.permute(2, 0, 1).to(torch.uint8)
+
+        # with self.voxel_map_lock:
+        #     self.voxel_map_localizer.voxel_pcd.clear_points(depth, intrinsics, pose)
 
         if self.owl:
             self.run_owl_sam_clip(rgb, torch.logical_or(depth > self.max_depth, depth < self.min_depth), world_xyz)

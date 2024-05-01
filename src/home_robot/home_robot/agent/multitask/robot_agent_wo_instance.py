@@ -127,7 +127,7 @@ class RobotAgentVoxel:
         """Returns reference to the navigation space."""
         return self.space
 
-    def rotate_in_place(self, steps: int = 6, visualize: bool = False) -> bool:
+    def rotate_in_place(self, steps: int = 10, visualize: bool = False) -> bool:
         """Simple helper function to make the robot rotate in place. Do a 360 degree turn to get some observations (this helps debug the robot and create a nice map).
 
         Returns:
@@ -174,6 +174,7 @@ class RobotAgentVoxel:
 
     def update(self):
         """Step the data collector. Get a single observation of the world. Remove bad points, such as those from too far or too near the camera. Update the 3d world representation."""
+        self.robot.head.set_pan_tilt(pan = 0, tilt = np.random.uniform(-0.6, -0.3))
         obs = self.robot.get_observation()
         # self.image_sender.send_images(obs)
         self.obs_history.append(obs)
@@ -270,8 +271,7 @@ class RobotAgentVoxel:
             print("       Start:", start)
             # sample a goal
             res = plan_to_frontier(
-                # start,
-                [0, 0, 0],
+                start,
                 self.planner,
                 self.space,
                 self.voxel_map,
@@ -334,9 +334,9 @@ class RobotAgentVoxel:
 
             # Append latest observations
             # self.update()
-            self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
+            # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
             self.rotate_in_place()
-            self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
+            # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
             self.rotate_in_place()
             # self.save_svm("", filename=f"debug_svm_{i:03d}.pkl")
             if visualize:
@@ -424,9 +424,9 @@ class RobotAgentVoxel:
             )
         else:
             print('Navigation Failure!')
-        self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
+        # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
         self.rotate_in_place()
-        self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
+        # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
         self.rotate_in_place()
 
 def send_array(socket, A, flags=0, copy=True, track=False):

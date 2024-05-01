@@ -41,6 +41,8 @@ import os
 import cv2
 import time
 
+from home_robot.utils.point_cloud import numpy_to_pcd
+
 Frame = namedtuple(
     "Frame",
     [
@@ -402,7 +404,20 @@ class SparseVoxelMapVoxel(object):
 
         # TODO: weights could also be confidence, inv distance from camera, etc
         if world_xyz.nelement() > 0:
+            self.voxel_pcd.clear_points(depth, camera_K, camera_pose)
+            pc_xyz, pc_rgb = self.get_xyz_rgb()
+            if pc_rgb is not None:
+                print('Writing after clearing', self._seq)
+                pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
+                open3d.io.write_point_cloud('debug3/debug_1_' + str(self._seq) + '.pcd', pcd)
+                print('Finish writing')
             self.voxel_pcd.add(world_xyz, features=feats, rgb=rgb, weights=None)
+            pc_xyz, pc_rgb = self.get_xyz_rgb()
+            if pc_rgb is not None:
+                print('Writing after adding', self._seq)
+                pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
+                open3d.io.write_point_cloud('debug3/debug_2_' + str(self._seq) + '.pcd', pcd)
+                print('Finish writing')
 
         if self._add_local_radius_points:
             # TODO: just get this from camera_pose?
