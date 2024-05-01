@@ -32,7 +32,7 @@ class StretchClient(RobotClient):
         self,
         init_node: bool = True,
         camera_overrides: Optional[Dict] = None,
-        urdf_path: str = "",
+        urdf_path: str = "./assets/hab_stretch/urdf",
         ik_type: str = "pinocchio",
         visualize_ik: bool = False,
         grasp_frame: Optional[str] = None,
