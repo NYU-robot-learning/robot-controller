@@ -136,7 +136,7 @@ class RobotAgentManip:
         """Returns reference to the navigation space."""
         return self.space
 
-    def rotate_in_place(self, steps: int = 6, visualize: bool = False) -> bool:
+    def rotate_in_place(self, steps: int = 10, visualize: bool = False) -> bool:
         """Simple helper function to make the robot rotate in place. Do a 360 degree turn to get some observations (this helps debug the robot and create a nice map).
 
         Returns:
@@ -183,6 +183,7 @@ class RobotAgentManip:
 
     def update(self):
         """Step the data collector. Get a single observation of the world. Remove bad points, such as those from too far or too near the camera. Update the 3d world representation."""
+        self.robot.head.set_pan_tilt(pan = 0, tilt = np.random.uniform(-0.6, -0.3))
         obs = self.robot.get_observation()
         # self.image_sender.send_images(obs)
         self.obs_history.append(obs)
@@ -230,7 +231,7 @@ class RobotAgentManip:
         visualize: bool = False,
         task_goal: str = None,
         go_home_at_end: bool = False,
-        go_to_start_pose: bool = True,
+        go_to_start_pose: bool = False,
         show_goal: bool = False,
     ):
         """Go through exploration. We use the voxel_grid map created by our collector to sample free space, and then use our motion planner (RRT for now) to get there. At the end, we plan back to (0,0,0).
@@ -342,10 +343,7 @@ class RobotAgentManip:
 
             # Append latest observations
             # self.update()
-            self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
-            self.rotate_in_place()
-            self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
-            self.rotate_in_place()
+            # self.rotate_in_place()
             # self.save_svm("", filename=f"debug_svm_{i:03d}.pkl")
             if visualize:
                 # After doing everything - show where we will move to
@@ -436,9 +434,7 @@ class RobotAgentManip:
         else:
             print('Navigation Failure!')
             return False
-        # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
         # self.rotate_in_place()
-        # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
         # self.rotate_in_place()
 
     def place(self, text, init_tilt = INIT_HEAD_TILT, transform_node = GRIPPER_MID_NODE, base_node = TOP_CAMERA_NODE):
