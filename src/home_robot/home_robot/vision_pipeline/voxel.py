@@ -61,7 +61,9 @@ def project_points(points_3d, K, pose):
 
 def get_depth_values(points_3d, pose):
     # Convert points to homogeneous coordinates
-    K = torch.T
+    if not isinstance(pose, torch.Tensor):
+        pose = torch.Tensor(pose)
+    pose = pose.to(points_3d)
     points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1)).to(points_3d)))
 
     # Transform points into camera coordinate system
