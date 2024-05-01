@@ -131,7 +131,7 @@ class VoxelizedPointcloud:
                         xys[:, 1] < 0,
                         xys[:, 1] >= W,
                         # the points are projected to the image frame but is blocked by some obstacles
-                        depth[valid_xys[:, 0], valid_xys[:, 1]] < proj_depth + 0.1,
+                        depth[valid_xys[:, 0], valid_xys[:, 1]] < proj_depth,
                         # the points are projected to the image frame but they are behind camera
                         depth[valid_xys[:, 0], valid_xys[:, 1]] < -0.1,
                         # depth is too large
