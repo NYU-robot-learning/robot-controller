@@ -40,8 +40,14 @@ from torch_geometric.nn.pool.voxel_grid import voxel_grid
 from torch_geometric.utils import add_self_loops, scatter
 
 def project_points(points_3d, K, pose):
+    if not isinstance(K, torch.Tensor):
+        K = torch.Tensor(K)
+    K = K.to(points_3d)
+    if not isinstance(pose, torch.Tensor):
+        pose = torch.Tensor(pose)
+    pose = pose.to(points_3d)
     # Convert points to homogeneous coordinates
-    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1))))
+    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1)).to(points_3d)))
 
     # Transform points into camera coordinate system
     points_camera_homogeneous = torch.matmul(torch.linalg.inv(pose), points_3d_homogeneous.T).T
@@ -55,7 +61,8 @@ def project_points(points_3d, K, pose):
 
 def get_depth_values(points_3d, pose):
     # Convert points to homogeneous coordinates
-    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1))))
+    K = torch.T
+    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1)).to(points_3d)))
 
     # Transform points into camera coordinate system
     points_camera_homogeneous = torch.matmul(torch.linalg.inv(pose), points_3d_homogeneous.T).T

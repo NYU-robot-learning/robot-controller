@@ -409,14 +409,14 @@ class SparseVoxelMapVoxel(object):
             # if pc_rgb is not None:
             #     print('Writing after clearing', self._seq)
             #     pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
-            #     open3d.io.write_point_cloud('debug_1_' + str(self._seq) + '.pcd', pcd)
+            #     open3d.io.write_point_cloud('debug1/debug_1_' + str(self._seq) + '.pcd', pcd)
             #     print('Finish writing')
             self.voxel_pcd.add(world_xyz, features=feats, rgb=rgb, weights=None)
             # pc_xyz, pc_rgb = self.get_xyz_rgb()
             # if pc_rgb is not None:
             #     print('Writing after adding', self._seq)
             #     pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
-            #     open3d.io.write_point_cloud('debug_2_' + str(self._seq) + '.pcd', pcd)
+            #     open3d.io.write_point_cloud('debug1/debug_2_' + str(self._seq) + '.pcd', pcd)
             #     print('Finish writing')
 
         if self._add_local_radius_points:
