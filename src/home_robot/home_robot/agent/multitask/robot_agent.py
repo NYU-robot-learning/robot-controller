@@ -7,6 +7,7 @@ import datetime
 import os
 import pickle
 import time
+import timeit
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -217,13 +218,16 @@ class RobotAgent:
         logger.info("Rotate in place")
         if steps <= 0:
             return False
+
+        # Put it in navigation posture
+        self.robot.move_to_nav_posture()
+
         step_size = 2 * np.pi / steps
         i = 0
         while i < steps:
             self.robot.navigate_to([0, 0, step_size], relative=True, blocking=True)
-            # TODO remove debug code
-            # print(i, self.robot.get_base_pose())
             self.update()
+
             if self.robot.last_motion_failed():
                 # We have a problem!
                 self.robot.navigate_to([-0.1, 0, 0], relative=True, blocking=True)
@@ -524,18 +528,6 @@ class RobotAgent:
         else:
             return self.ask("please type any task you want the robot to do: ")
 
-    def __del__(self):
-        """Clean up at the end if possible"""
-        self.finish()
-
-    def finish(self):
-        """Clean up at the end if possible"""
-        print("Finishing different processes:")
-        if self.parameters["start_ui_server"]:
-            print("- Stopping UI server...")
-            stop_demo_ui_server()
-        print("... Done.")
-
     def publish_limited_obs(self):
         obs = self.robot.get_observation()
         self.obs_count += 1
@@ -555,7 +547,18 @@ class RobotAgent:
 
     def update(self, visualize_map=False):
         """Step the data collector. Get a single observation of the world. Remove bad points, such as those from too far or too near the camera. Update the 3d world representation."""
-        obs = self.robot.get_observation()
+        t0 = timeit.default_timer()
+        while True:
+            obs = self.robot.get_observation()
+            if obs is not None:
+                break
+            else:
+                time.sleep(0.1)
+            t1 = timeit.default_timer()
+            dt = t1 - t0
+            if dt > 5:
+                logger.error("Failed to get observation")
+                return False
         self.obs_history.append(obs)
         self.obs_count += 1
         # Semantic prediction
@@ -672,14 +675,17 @@ class RobotAgent:
         self.robot.move_to_nav_posture()
         start = self.robot.get_base_pose()
         start_is_valid = self.space.is_valid(start, verbose=True)
-        start_is_valid_retries = 5
+        start_is_valid_retries = 1
         while not start_is_valid and start_is_valid_retries > 0:
-            print(f"Start {start} is not valid. back up a bit.")
-            self.robot.navigate_to([-0.1, 0, 0], relative=True)
+            print(f"Start {start} is not valid. Try to back up a bit.")
+            self.robot.navigate_to([-0.1, 0, 0], relative=True, blocking=True)
             # Get the current position in case we are still invalid
             start = self.robot.get_base_pose()
             start_is_valid = self.space.is_valid(start, verbose=True)
             start_is_valid_retries -= 1
+        if not start_is_valid:
+            print("Robot is unable to find a good start position; something is wrong!")
+            breakpoint()
         res = None
 
         # Just terminate here - motion planning issues apparently!
@@ -767,15 +773,16 @@ class RobotAgent:
             print(i, name, instance.score)
 
     def start(self, goal: Optional[str] = None, visualize_map_at_start: bool = False):
-        # Tuck the arm away
-        print("Sending arm to  home...")
-        self.robot.switch_to_manipulation_mode()
 
         # Call the robot's own startup hooks
         started = self.robot.start()
         if started:
             # update here
             self.update()
+
+        # Tuck the arm away
+        print("Sending arm to  home...")
+        self.robot.switch_to_manipulation_mode()
 
         # Add some debugging stuff - show what 3d point clouds look like
         if visualize_map_at_start:
@@ -792,6 +799,7 @@ class RobotAgent:
         # Move the robot into navigation mode
         self.robot.switch_to_navigation_mode()
         print("- Update map after switching to navigation posture")
+
         # self.update(visualize_map=visualize_map_at_start)  # Append latest observations
         self.update(visualize_map=False)  # Append latest observations
 
