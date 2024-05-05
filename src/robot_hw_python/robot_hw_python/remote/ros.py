@@ -45,8 +45,8 @@ from robot_hw_python.ros.lidar import RosLidar
 from robot_hw_python.ros.utils import matrix_from_pose_msg
 from robot_hw_python.ros.visualizer import Visualizer
 
-DEFAULT_COLOR_TOPIC = "/camera/color"
-DEFAULT_DEPTH_TOPIC = "/camera/aligned_depth_to_color"
+DEFAULT_COLOR_TOPIC = "/camera/camera/color"
+DEFAULT_DEPTH_TOPIC = "/camera/camera/aligned_depth_to_color"
 DEFAULT_LIDAR_TOPIC = "/scan"
 
 
@@ -372,6 +372,7 @@ class StretchRosInterface(Node):
         if self.rgb_cam is not None or self.dpt_cam is not None:
             raise RuntimeError("Already created cameras")
         print("Creating cameras...")
+        print("Debug here")
         self.rgb_cam = RosCamera(
             self, self._color_topic, rotations=STRETCH_HEAD_CAMERA_ROTATIONS
         )

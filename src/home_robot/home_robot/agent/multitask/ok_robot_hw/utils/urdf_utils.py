@@ -13,7 +13,7 @@ def urdf_joint_to_kdl_joint(jnt):
     kdl = PyKDL
     origin_frame = urdf_pose_to_kdl_frame(jnt.origin)
     if jnt.joint_type == 'fixed':
-        return kdl.Joint(jnt.name, getattr(kdl.Joint, 'None'))
+        return kdl.Joint(jnt.name, kdl.Joint.Fixed)
     axis = kdl.Vector(*jnt.axis)
     if jnt.joint_type == 'revolute':
         return kdl.Joint(jnt.name, origin_frame.p,

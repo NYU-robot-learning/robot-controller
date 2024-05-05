@@ -101,15 +101,15 @@ def main(
         demo.voxel_map.read_from_pickle(filename = input_path)
         print('finish reading from old pickle file')
     else:
-        demo.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
+        # demo.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
         demo.rotate_in_place()
-        demo.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
+        # demo.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
         demo.rotate_in_place()
 
         demo.run_exploration(
             rate,
             manual_wait,
-            explore_iter=parameters["exploration_steps"],
+            explore_iter=15,
             task_goal=object_to_find,
             go_home_at_end=navigate_home,
             visualize=show_intermediate_maps,

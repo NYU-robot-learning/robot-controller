@@ -11,6 +11,9 @@ from home_robot.motion.stretch import HelloStretchIdx
 
 from .abstract import AbstractControlModule
 
+from std_srvs.srv import Trigger
+from robot_hw_python.constants import T_LOC_STABILIZE
+
 MIN_DEPTH_REPLACEMENT_VALUE = 10000
 MAX_DEPTH_REPLACEMENT_VALUE = 10001
 
@@ -64,6 +67,16 @@ class StretchHeadClient(AbstractControlModule):
         tilt: Optional[float] = None,
         blocking: bool = True,
     ):
+        while self._ros_client._current_mode == 'runstopped':
+            print('In run stopped mode')
+            rate = self._ros_client.create_rate(1)
+            rate.sleep()  # wait for robot movement to stop
+        mode = self._ros_client._current_mode
+        if mode == 'navigation':
+            self._ros_client.goto_off_service.call(Trigger.Request())
+            rate = self._ros_client.create_rate(1 / T_LOC_STABILIZE)
+            rate.sleep()  # wait for robot movement to stop
+        self._ros_client.pos_mode_service.call(Trigger.Request())
         joint_goals = {}
         if pan is not None:
             joint_goals[self._ros_client.HEAD_PAN] = pan
@@ -75,6 +88,8 @@ class StretchHeadClient(AbstractControlModule):
         self._register_wait(self._ros_client.wait_for_trajectory_action)
         if blocking:
             self.wait()
+        if mode == 'navigation':
+            self._ros_client.nav_mode_service.call(Trigger.Request())
 
     def look_close(self, blocking: bool = True):
         """Point camera sideways towards the gripper"""
