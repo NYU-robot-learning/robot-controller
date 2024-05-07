@@ -98,20 +98,21 @@ def main(
     img_thread.daemon = True
     img_thread.start()
 
-    
+    # demo.rotate_in_place()
+    # demo.rotate_in_place()
+
     while True:
+        robot.move_to_nav_posture()
         mode = input('select mode? E/N/S')
         if mode == 'S':
             break
         if mode == 'E':
-            for _ in range(15):
-                demo.rotate_in_place()
-                demo.rotate_in_place()
-
+            for _ in range(1):
+                demo.look_around()
                 demo.run_exploration(
                     rate,
                     manual_wait,
-                    explore_iter=1,
+                    explore_iter=15,
                     task_goal=object_to_find,
                     go_home_at_end=navigate_home,
                     visualize=show_intermediate_maps,

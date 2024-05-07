@@ -136,6 +136,22 @@ class RobotAgentManip:
         """Returns reference to the navigation space."""
         return self.space
 
+    def look_around(self, visualize: bool = False):
+        logger.info("Look around to check")
+        time.sleep(1)
+        for pan in [0.25, 0.75, -0.25, -0.75, -1.25, -1.75, -2.25]:
+            for tilt in [-0.3, -0.45, -0.6]:
+                self.robot.head.set_pan_tilt(pan, tilt)
+                time.sleep(0.5)
+                self.update()
+
+            if visualize:
+                self.voxel_map.show(
+                    orig=np.zeros(3),
+                    xyt=self.robot.get_base_pose(),
+                    footprint=self.robot.get_robot_model().get_footprint(),
+                )
+
     def rotate_in_place(self, steps: int = 6, visualize: bool = False) -> bool:
         """Simple helper function to make the robot rotate in place. Do a 360 degree turn to get some observations (this helps debug the robot and create a nice map).
 
@@ -152,6 +168,7 @@ class RobotAgentManip:
             self.robot.navigate_to([0, 0, step_size], relative=True, blocking=True)
             # TODO remove debug code
             # print(i, self.robot.get_base_pose())
+            self.robot.head.set_pan_tilt(pan = 0, tilt = np.random.uniform(-0.7, -0.4))
             self.update()
             if self.robot.last_motion_failed():
                 # We have a problem!
@@ -183,7 +200,6 @@ class RobotAgentManip:
 
     def update(self):
         """Step the data collector. Get a single observation of the world. Remove bad points, such as those from too far or too near the camera. Update the 3d world representation."""
-        self.robot.head.set_pan_tilt(pan = 0, tilt = np.random.uniform(-0.6, -0.4))
         obs = self.robot.get_observation()
         # self.image_sender.send_images(obs)
         self.obs_history.append(obs)
@@ -250,6 +266,7 @@ class RobotAgentManip:
         # Explore some number of times
         no_success_explore = True
         for i in range(explore_iter):
+            self.robot.move_to_nav_posture()
             print("\n" * 2)
             print("-" * 20, i + 1, "/", explore_iter, "-" * 20)
             start = self.robot.get_base_pose()
@@ -340,7 +357,7 @@ class RobotAgentManip:
                     self.robot.navigate_to(
                         [0, 0, -np.pi / 4], relative=True, blocking=True
                     )
-
+            self.look_around()
             # Append latest observations
             # self.update()
             # self.rotate_in_place()
@@ -433,9 +450,8 @@ class RobotAgentManip:
             return True
         else:
             print('Navigation Failure!')
-            return False
-        # self.rotate_in_place()
-        # self.rotate_in_place()
+            return false
+        # self.look_ahead()
 
     def place(self, text, init_tilt = INIT_HEAD_TILT, transform_node = GRIPPER_MID_NODE, base_node = TOP_CAMERA_NODE):
         '''

@@ -411,6 +411,16 @@ class SparseVoxelMapVoxel(object):
             #     pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
             #     open3d.io.write_point_cloud('debug3/debug_1_' + str(self._seq) + '.pcd', pcd)
             #     print('Finish writing')
+            threshold = 0.85
+            selected_indices = torch.randperm(len(world_xyz))[:int((1 - threshold) * len(world_xyz))]
+            if len(selected_indices) == 0:
+                return
+            if world_xyz is not None:
+                world_xyz = world_xyz[selected_indices]
+            if feats is not None:
+                feats = feats[selected_indices]
+            if rgb is not None:
+                rgb = rgb[selected_indices]
             self.voxel_pcd.add(world_xyz, features=feats, rgb=rgb, weights=None)
             # pc_xyz, pc_rgb = self.get_xyz_rgb()
             # if pc_rgb is not None:
