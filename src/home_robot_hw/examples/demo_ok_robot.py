@@ -118,14 +118,14 @@ def main(
                     visualize=show_intermediate_maps,
                 )
         else:
-            text = input('Enter object name: ')
-            point = demo.image_sender.query_text(text)
-            demo.navigate(point)
-            cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
-            robot.switch_to_navigation_mode()
-            xyt = robot.nav.get_base_pose()
-            xyt[2] = xyt[2] + np.pi / 2
-            robot.nav.navigate_to(xyt)
+            # text = input('Enter object name: ')
+            # point = demo.image_sender.query_text(text)
+            # demo.navigate(point)
+            # cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            # robot.switch_to_navigation_mode()
+            # xyt = robot.nav.get_base_pose()
+            # xyt[2] = xyt[2] + np.pi / 2
+            # robot.nav.navigate_to(xyt)
 
             if input('You want to run manipulation: y/n' == 'n'):
                 continue
@@ -133,9 +133,6 @@ def main(
             theta = compute_tilt(camera_xyz, point)
             demo.manipulate(text, theta)
             robot.switch_to_navigation_mode()
-            xyt = robot.nav.get_base_pose()
-            xyt[2] = xyt[2] - np.pi / 2
-            robot.nav.navigate_to(xyt)
         
             if input('You want to run placing: y/n' == 'n'):
                 continue

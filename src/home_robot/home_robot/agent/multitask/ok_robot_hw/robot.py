@@ -218,8 +218,8 @@ class HelloRobot:
             self.robot.manip.goto_joint_positions(target1, relative=True)
             time.sleep(0.7)
 
-        # print(f"current state {state}")
-        # print(f"target state {target_state}")
+        print(f"current state {state}")
+        print(f"target state {target_state}")
         self.robot.manip.goto_joint_positions(target_state)
         time.sleep(0.7)
 

@@ -1,5 +1,19 @@
 <?xml version="1.0" ?>
 <robot name="stretch_description" version="1.0">
+  <link name="fake_link_x">
+    <inertial>
+      <origin rpy="0.0 0.0 0." xyz="0. 0. 0."/>
+      <mass value="0.749143203376"/>
+      <inertia ixx="0.0709854511955" ixy="-0.00433428742758" ixz="-0.000186110788698" iyy="0.000437922053343" iyz="-0.00288788257713" izz="0.0711048085017"/>
+    </inertial>
+  </link>
+  <joint name="joint_fake" type="prismatic">
+    <origin rpy="0. 0. 0." xyz="0. 0. 0."/>
+    <axis xyz="1.0 0.0 0.0"/>
+    <parent link="base_link"/>
+    <child link="fake_link_x"/>
+    <limit effort="100.0" lower="-1.0" upper="1.1" velocity="1.0"/>
+  </joint>
   <link name="link_wrist_yaw_bottom">
     <inertial>
       <origin xyz="-0.012839101377342 -0.0382787718640742 -0.0228400332263617" rpy="0.0 0.0 0.0"/>
@@ -361,7 +375,7 @@
   <joint name="joint_mast" type="fixed">
     <origin xyz="-0.07174416574437388 0.13780491000396983 0.03663931715774088" rpy="1.5780076046568878 0.016499709009588637 -0.007971437955302632"/>
     <axis xyz="0.0 0.0 0.0"/>
-    <parent link="base_link"/>
+    <parent link="fake_link_x"/>
     <child link="link_mast"/>
   </joint>
   <link name="link_lift">

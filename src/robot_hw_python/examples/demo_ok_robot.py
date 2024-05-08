@@ -89,30 +89,29 @@ def main(
         robot, parameters
     )
 
-    def send_image():
-        while True:
-            if robot.nav._is_enabled:
-                obs = robot.get_observation()
-                demo.image_sender.send_images(obs)
+    # def send_image():
+    #     while True:
+    #         if robot.nav._is_enabled:
+    #             obs = robot.get_observation()
+    #             demo.image_sender.send_images(obs)
 
-    img_thread = threading.Thread(target=send_image)
-    img_thread.daemon = True
-    img_thread.start()
+    # img_thread = threading.Thread(target=send_image)
+    # img_thread.daemon = True
+    # img_thread.start()
 
     
     while True:
-        mode = input('select mode? E/N/S')
+        # mode = input('select mode? E/N/S')
+        mode = 'N'
         if mode == 'S':
             break
         if mode == 'E':
-            for _ in range(15):
-                demo.rotate_in_place()
-                demo.rotate_in_place()
-
+            for _ in range(1):
+                demo.look_around()
                 demo.run_exploration(
                     rate,
                     manual_wait,
-                    explore_iter=1,
+                    explore_iter=15,
                     task_goal=object_to_find,
                     go_home_at_end=navigate_home,
                     visualize=show_intermediate_maps,
@@ -127,28 +126,29 @@ def main(
             # xyt[2] = xyt[2] + np.pi / 2
             # robot.nav.navigate_to(xyt)
 
-            if input('You want to run manipulation: y/n' == 'n'):
-                continue
-            text = 'blue cup'
+            # if input('You want to run manipulation: y/n') == 'n':
+            #     continue
+            text = 'white bottle'
             camera_xyz = robot.head.get_pose()[:3, 3]
             # theta = compute_tilt(camera_xyz, point)
             theta = -0.6
             demo.manipulate(text, theta)
             robot.switch_to_navigation_mode()
         
-            if input('You want to run placing: y/n' == 'n'):
-                continue
-            text = input('Enter receptacle name: ')
-            point = demo.image_sender.query_text(text)
-            demo.navigate(point)
-            cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
-            robot.switch_to_navigation_mode()
-            xyt = robot.nav.get_base_pose()
-            xyt[2] = xyt[2] + np.pi / 2
-            robot.nav.navigate_to(xyt)
+            # if input('You want to run placing: y/n') == 'n':
+            #     continue
+            # text = input('Enter receptacle name: ')
+            # point = demo.image_sender.query_text(text)
+            # demo.navigate(point)
+            # cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            # robot.switch_to_navigation_mode()
+            # xyt = robot.nav.get_base_pose()
+            # xyt[2] = xyt[2] + np.pi / 2
+            # robot.nav.navigate_to(xyt)
         
-            if input('You want to run placing: y/n' == 'n'):
+            if input('You want to run placing: y/n') == 'n':
                 continue
+            text = 'table'
             camera_xyz = robot.head.get_pose()[:3, 3]
             theta = compute_tilt(camera_xyz, point)
             demo.place(text, theta)
