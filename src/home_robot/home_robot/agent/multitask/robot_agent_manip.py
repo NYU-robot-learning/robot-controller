@@ -36,7 +36,6 @@ from matplotlib import pyplot as plt
 
 from home_robot.agent.multitask.ok_robot_hw.global_parameters import *
 from home_robot.agent.multitask.ok_robot_hw.robot import HelloRobot as Manipulation_Wrapper
-from home_robot.agent.multitask.ok_robot_hw.args import get_args
 from home_robot.agent.multitask.ok_robot_hw.camera import RealSenseCamera
 from home_robot.agent.multitask.ok_robot_hw.utils.grasper_utils import pickup, move_to_point, capture_and_process_image
 from home_robot.agent.multitask.ok_robot_hw.utils.communication_utils import send_array, recv_array
@@ -52,6 +51,7 @@ class RobotAgentManip:
         parameters: Dict[str, Any],
         voxel_map: Optional[SparseVoxelMap] = None,
         manip_port: int = 5557,
+        re: int = 1
     ):
         print('------------------------YOU ARE NOW RUNNING PEIQI CODES V3-----------------')
         if isinstance(parameters, Dict):
@@ -61,7 +61,13 @@ class RobotAgentManip:
         else:
             raise RuntimeError(f"parameters of unsupported type: {type(parameters)}")
         self.robot = robot
-        self.manip_wrapper = Manipulation_Wrapper(self.robot, end_link = GRIPPER_MID_NODE)
+        if re == 1:
+            stretch_gripper_max = 0.3
+            end_link = "link_straight_gripper"
+        else:
+            stretch_gripper_max = 0.64
+            end_link = "link_gripper_s3_body"
+        self.manip_wrapper = Manipulation_Wrapper(self.robot, stretch_gripper_max = stretch_gripper_max, end_link = end_link)
         self.robot.move_to_nav_posture()
 
         self.normalize_embeddings = True
@@ -357,7 +363,7 @@ class RobotAgentManip:
                     self.robot.navigate_to(
                         [0, 0, -np.pi / 4], relative=True, blocking=True
                     )
-            self.look_around()
+            # self.look_around()
             # Append latest observations
             # self.update()
             # self.rotate_in_place()

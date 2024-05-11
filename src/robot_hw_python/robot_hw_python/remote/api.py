@@ -95,6 +95,7 @@ class StretchClient(RobotClient):
         result_post = self.nav.enable()
 
         self._base_control_mode = ControlMode.NAVIGATION
+            
 
         return result_pre and result_post
 

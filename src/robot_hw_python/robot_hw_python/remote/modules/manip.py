@@ -11,6 +11,7 @@ from home_robot.motion.stretch import STRETCH_HOME_Q, HelloStretchIdx
 from home_robot.utils.geometry import posquat2sophus, sophus2posquat, xyt2sophus
 from scipy.spatial.transform import Rotation as R
 from std_srvs.srv import Trigger
+from robot_hw_python.constants import T_LOC_STABILIZE
 
 from .abstract import AbstractControlModule, enforce_enabled
 
@@ -42,7 +43,10 @@ class StretchManipulationClient(AbstractControlModule):
         result = self._ros_client.pos_mode_service.call(Trigger.Request())
         self._ros_client.get_logger().info(result.message)
         self.base_x = 0.0
-
+        rate = self._ros_client.create_rate(1 / T_LOC_STABILIZE)
+        while self._ros_client._current_mode != 'position':
+            rate.sleep()
+        
         return result.success
 
     def _disable_hook(self) -> bool:

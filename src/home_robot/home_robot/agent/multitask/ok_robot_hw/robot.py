@@ -22,7 +22,7 @@ class HelloRobot:
         robot,
         stretch_client_urdf_file = 'assets/hab_stretch/urdf',
         gripper_threshold = 7.0, 
-        stretch_gripper_max = 0.3, 
+        stretch_gripper_max = 0.64, 
         stretch_gripper_min = 0, 
         end_link = GRIPPER_MID_NODE
     ):
@@ -141,7 +141,9 @@ class HelloRobot:
             target_head_tilt = head_tilt
         if not head_pan is None:
             target_head_pan = head_pan
+        print('Mode before moving head:', self.robot._ros_client._current_mode)
         self.robot.head.set_pan_tilt(tilt = target_head_tilt, pan = target_head_pan)
+        print('Mode after moving head:', self.robot._ros_client._current_mode)
         time.sleep(0.7)
 
     def pickup(self, depth):

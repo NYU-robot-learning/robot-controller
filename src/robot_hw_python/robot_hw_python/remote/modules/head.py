@@ -67,10 +67,6 @@ class StretchHeadClient(AbstractControlModule):
         tilt: Optional[float] = None,
         blocking: bool = True,
     ):
-        while self._ros_client._current_mode == 'runstopped':
-            print('In run stopped mode')
-            rate = self._ros_client.create_rate(1)
-            rate.sleep()  # wait for robot movement to stop
         mode = self._ros_client._current_mode
         if mode == 'navigation':
             self._ros_client.goto_off_service.call(Trigger.Request())

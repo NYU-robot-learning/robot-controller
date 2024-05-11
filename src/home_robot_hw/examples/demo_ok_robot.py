@@ -45,8 +45,7 @@ def compute_tilt(camera_xyz, target_xyz):
 @click.option("--show-intermediate-maps", default=False, is_flag=True)
 @click.option("--random-goals", default=False, is_flag=True)
 @click.option("--explore-iter", default=-1)
-@click.option("--navigate-home", default=False, is_flag=True)
-@click.option("--force-explore", default=False, is_flag=True)
+@click.option("--re", default=1, type=int)
 def main(
     rate,
     # visualize,
@@ -55,6 +54,7 @@ def main(
     navigate_home: bool = False,
     show_intermediate_maps: bool = False,
     explore_iter: int = 10,
+    re: int = 1
     **kwargs,
 ):
     """
@@ -85,7 +85,7 @@ def main(
 
     print("- Start robot agent with data collection")
     demo = RobotAgent(
-        robot, parameters
+        robot, parameters, re = re
     )
 
     def send_image():
