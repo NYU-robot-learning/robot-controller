@@ -24,7 +24,7 @@ class HelloRobot:
         gripper_threshold = 7.0, 
         stretch_gripper_max = 0.64, 
         stretch_gripper_min = 0, 
-        end_link = GRIPPER_MID_NODE
+        end_link = 'link_straight_gripper'
     ):
         self.STRETCH_GRIPPER_MAX = stretch_gripper_max
         self.STRETCH_GRIPPER_MIN = stretch_gripper_min

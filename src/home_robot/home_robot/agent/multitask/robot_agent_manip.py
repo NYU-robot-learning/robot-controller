@@ -67,6 +67,7 @@ class RobotAgentManip:
         else:
             stretch_gripper_max = 0.64
             end_link = "link_gripper_s3_body"
+        self.transform_node = end_link
         self.manip_wrapper = Manipulation_Wrapper(self.robot, stretch_gripper_max = stretch_gripper_max, end_link = end_link)
         self.robot.move_to_nav_posture()
 
@@ -459,7 +460,7 @@ class RobotAgentManip:
             return false
         # self.look_ahead()
 
-    def place(self, text, init_tilt = INIT_HEAD_TILT, transform_node = GRIPPER_MID_NODE, base_node = TOP_CAMERA_NODE):
+    def place(self, text, init_tilt = INIT_HEAD_TILT, base_node = TOP_CAMERA_NODE):
         '''
             An API for running placing. By calling this API, human will ask the robot to place whatever it holds
             onto objects specified by text queries A
@@ -496,7 +497,7 @@ class RobotAgentManip:
         time.sleep(2)
 
         # Placing the object
-        move_to_point(self.manip_wrapper, translation, base_node, transform_node, move_mode=0)
+        move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
         self.manip_wrapper.move_to_position(gripper_pos=1)
 
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
@@ -518,7 +519,7 @@ class RobotAgentManip:
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])
         return True
 
-    def manipulate(self, text, init_tilt = INIT_HEAD_TILT, transform_node = GRIPPER_MID_NODE, base_node = TOP_CAMERA_NODE):
+    def manipulate(self, text, init_tilt = INIT_HEAD_TILT, base_node = TOP_CAMERA_NODE):
         '''
             An API for running manipulation. By calling this API, human will ask the robot to pick up objects
             specified by text queries A
@@ -556,7 +557,7 @@ class RobotAgentManip:
             return False
         
         if input('Do you want to do this manipulation? Y or N ') != 'N':
-            pickup(self.manip_wrapper, rotation, translation, base_node, transform_node, gripper_depth = depth)
+            pickup(self.manip_wrapper, rotation, translation, base_node, self.transform_node, gripper_depth = depth)
     
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])
