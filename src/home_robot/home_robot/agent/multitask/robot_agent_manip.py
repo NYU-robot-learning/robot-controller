@@ -95,6 +95,8 @@ class RobotAgentManip:
                 local_radius=parameters["local_radius"],
                 obs_min_height=parameters["obs_min_height"],
                 obs_max_height=parameters["obs_max_height"],
+                min_depth=parameters["min_depth"],
+                max_depth=parameters["max_depth"],
                 pad_obstacles=parameters["pad_obstacles"],
                 add_local_radius_points=parameters.get(
                     "add_local_radius_points", default=True
@@ -149,11 +151,11 @@ class RobotAgentManip:
         logger.info("Look around to check")
         time.sleep(1)
         for pan in [0.5, 0., -0.5, -1., -1.5, -2.]:
-            for tilt in [-0.3, -0.45, -0.6]:
+            for tilt in [-0.3, -0.5]:
                 self.robot.head.set_pan_tilt(pan, tilt)
                 time.sleep(0.5)
-                # We need tilt to be -0.45 to help the performance of semantic memory, but we don' want to waste time adding it to obstalce map
-                if tilt == -0.6:
+                # We need differen tilts to help the performance of semantic memory, but we don't want to waste time adding it to obstalce map
+                if tilt == -0.5:
                     self.update()
 
             if visualize:
@@ -407,7 +409,7 @@ class RobotAgentManip:
         #     else:
         #         print("WARNING: planning to home failed!")
 
-    def navigate(self, point, max_tries = 1000, radius_m = 0.7, visualize = False, verbose = True):
+    def navigate(self, point, max_tries = 200, radius_m = 0.7, visualize = False, verbose = True):
         print(point)
         self.robot.switch_to_navigation_mode()
         self.robot.head.look_front()

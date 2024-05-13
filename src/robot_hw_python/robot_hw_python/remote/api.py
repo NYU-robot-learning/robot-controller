@@ -166,7 +166,7 @@ class StretchClient(RobotClient):
     def move_to_manip_posture(self):
         """Move the arm and head into manip mode posture: gripper down, head facing the gripper."""
         self.switch_to_manipulation_mode()
-        self.head.look_at_ee(blocking=False)
+        self.head.look_at_ee(blocking=True)
         self.manip.goto_joint_positions(
             self.manip._extract_joint_pos(STRETCH_PREGRASP_Q)
         )
@@ -175,7 +175,7 @@ class StretchClient(RobotClient):
     def move_to_demo_pregrasp_posture(self):
         """Move the arm and head into pre-demo posture: gripper straight, arm way down, head facing the gripper."""
         self.switch_to_manipulation_mode()
-        self.head.look_at_ee(blocking=False)
+        self.head.look_at_ee(blocking=True)
         self.manip.goto_joint_positions(
             self.manip._extract_joint_pos(STRETCH_DEMO_PREGRASP_Q)
         )
@@ -183,7 +183,7 @@ class StretchClient(RobotClient):
     def move_to_pre_demo_posture(self):
         """Move the arm and head into pre-demo posture: gripper straight, arm way down, head facing the gripper."""
         self.switch_to_manipulation_mode()
-        self.head.look_at_ee(blocking=False)
+        self.head.look_at_ee(blocking=True)
         self.manip.goto_joint_positions(
             self.manip._extract_joint_pos(STRETCH_PREDEMO_Q)
         )
@@ -193,7 +193,7 @@ class StretchClient(RobotClient):
 
         # First retract the robot's joints
         self.switch_to_manipulation_mode()
-        self.head.look_front(blocking=False)
+        self.head.look_front(blocking=True)
         self.manip.goto_joint_positions(
             self.manip._extract_joint_pos(STRETCH_NAVIGATION_Q)
         )
