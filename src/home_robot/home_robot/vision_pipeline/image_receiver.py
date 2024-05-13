@@ -23,6 +23,8 @@ from matplotlib import pyplot as plt
 from voxel import VoxelizedPointcloud
 from voxel_map_localizer import VoxelMapLocalizer
 
+import datetime
+
 import threading
 
 def load_socket(port_number):
@@ -125,6 +127,10 @@ class ImageProcessor:
         text_port = 5556,
         pcd_path: str = None
     ):
+        current_datetime = datetime.datetime.now()
+        self.log = 'debug_' + current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
+        if not os.path.exists(self.log_dir):
+            os.mkdir(self.log_dir)
         self.min_depth = min_depth
         self.max_depth = max_depth
         self.obs_count = 0
@@ -287,7 +293,7 @@ class ImageProcessor:
             for vis_mask in masks:
                 segmentation_color_map[vis_mask.detach().cpu().numpy()] = [0, 255, 0]
             image_vis = cv2.addWeighted(image_vis, 0.7, segmentation_color_map, 0.3, 0)
-            cv2.imwrite("debug/seg" + str(self.obs_count) + ".jpg", image_vis)
+            cv2.imwrite(self.log + "/seg" + str(self.obs_count) + ".jpg", image_vis)
     
             crops = []
             for box in bounding_boxes:
@@ -369,10 +375,10 @@ class ImageProcessor:
         world_xyz = get_xyz(depth, pose, intrinsics).squeeze(0)
 
         # cv2.imwrite('debug/rgb' + str(self.obs_count) + '.jpg', rgb[:, :, [2, 1, 0]])
-        np.save('debug/rgb' + str(self.obs_count) + '.npy', rgb)
-        np.save('debug/depth' + str(self.obs_count) + '.npy', depth)
-        np.save('debug/intrinsics' + str(self.obs_count) + '.npy', intrinsics)
-        np.save('debug/pose' + str(self.obs_count) + '.npy', pose)
+        np.save(self.log + '/rgb' + str(self.obs_count) + '.npy', rgb)
+        np.save(self.log + '/depth' + str(self.obs_count) + '.npy', depth)
+        np.save(self.log + '/intrinsics' + str(self.obs_count) + '.npy', intrinsics)
+        np.save(self.log + '/pose' + str(self.obs_count) + '.npy', pose)
 
         rgb, depth = torch.from_numpy(rgb), torch.from_numpy(depth)
         rgb = rgb.permute(2, 0, 1).to(torch.uint8)
@@ -392,10 +398,11 @@ if __name__ == "__main__":
         while True:
             imageProcessor.recv_text()
     except KeyboardInterrupt:
-        print('Stop streaming images and write memory data, might take a while, please wait')
-        torch.save(imageProcessor.voxel_map_localizer.voxel_pcd, 'memory.pt')
-        points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
-        points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-        pcd = numpy_to_pcd(points, rgb / 255)
-        o3d.io.write_point_cloud('debug.pcd', pcd)
-        print('finished')
+        if not imageProcessor.voxel_map_localizer.voxel_pcd._points is None:
+            print('Stop streaming images and write memory data, might take a while, please wait')
+            torch.save(imageProcessor.voxel_map_localizer.voxel_pcd, 'memory.pt')
+            points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
+            points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
+            pcd = numpy_to_pcd(points, rgb / 255)
+            o3d.io.write_point_cloud(imageProcessor.log + 'debug.pcd', pcd)
+            print('finished')
