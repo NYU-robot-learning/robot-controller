@@ -107,12 +107,12 @@ class SparseVoxelMapVoxel(object):
 
     def __init__(
         self,
-        resolution: float = 0.01,
+        resolution: float = 0.1,
         feature_dim: int = 3,
         grid_size: Tuple[int, int] = None,
-        grid_resolution: float = 0.05,
+        grid_resolution: float = 0.1,
         obs_min_height: float = 0.1,
-        obs_max_height: float = 1.8,
+        obs_max_height: float = 1.5,
         obs_min_density: float = 50,
         smooth_kernel_size: int = 2,
         add_local_radius_points: bool = True,
@@ -128,6 +128,7 @@ class SparseVoxelMapVoxel(object):
         median_filter_max_error: float = 0.01,
         use_derivative_filter: bool = False,
         derivative_filter_threshold: float = 0.5,
+        point_update_threshold: float = 0.9,
     ):
         """
         Args:
@@ -163,6 +164,7 @@ class SparseVoxelMapVoxel(object):
         # Derivative filter params
         self.use_derivative_filter = use_derivative_filter
         self.derivative_filter_threshold = derivative_filter_threshold
+        self.point_update_threshold = point_update_threshold
 
         self.grid_resolution = grid_resolution
         self.voxel_resolution = resolution
@@ -411,8 +413,7 @@ class SparseVoxelMapVoxel(object):
             #     pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
             #     open3d.io.write_point_cloud('debug3/debug_1_' + str(self._seq) + '.pcd', pcd)
             #     print('Finish writing')
-            threshold = 0.85
-            selected_indices = torch.randperm(len(world_xyz))[:int((1 - threshold) * len(world_xyz))]
+            selected_indices = torch.randperm(len(world_xyz))[:int((1 - self.point_update_threshold) * len(world_xyz))]
             if len(selected_indices) == 0:
                 return
             if world_xyz is not None:

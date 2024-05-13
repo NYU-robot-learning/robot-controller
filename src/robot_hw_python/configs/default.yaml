@@ -5,7 +5,7 @@ encoder_args: "ViT-B/32"
 open_vocab_cat_map_file: projects/real_world_ovmm/configs/example_cat_map.json
 
 # Sparse Voxel Map parameters
-voxel_size: 0.05
+voxel_size: 0.1
 # 0.05 seems too low
 obs_min_height: 0.1  # Ignore things less than this high when planning motions
 obs_max_height: 1.8  # Ignore things over this height (eg ceilings)

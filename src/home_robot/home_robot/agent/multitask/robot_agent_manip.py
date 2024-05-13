@@ -51,9 +51,11 @@ class RobotAgentManip:
         parameters: Dict[str, Any],
         voxel_map: Optional[SparseVoxelMap] = None,
         manip_port: int = 5557,
-        re: int = 1
+        re: int = 1,
+        log_dir: str = 'debug'
     ):
         print('------------------------YOU ARE NOW RUNNING PEIQI CODES V3-----------------')
+        self.log_dir = log_dir
         if isinstance(parameters, Dict):
             self.parameters = Parameters(**parameters)
         elif isinstance(parameters, Parameters):
@@ -146,11 +148,13 @@ class RobotAgentManip:
     def look_around(self, visualize: bool = False):
         logger.info("Look around to check")
         time.sleep(1)
-        for pan in [0.25, 0.75, -0.25, -0.75, -1.25, -1.75, -2.25]:
+        for pan in [0.5, 0., -0.5, -1., -1.5, -2.]:
             for tilt in [-0.3, -0.45, -0.6]:
                 self.robot.head.set_pan_tilt(pan, tilt)
                 time.sleep(0.5)
-                self.update()
+                # We need tilt to be -0.45 to help the performance of semantic memory, but we don' want to waste time adding it to obstalce map
+                if tilt == -0.6:
+                    self.update()
 
             if visualize:
                 self.voxel_map.show(
@@ -215,9 +219,9 @@ class RobotAgentManip:
 
         # Add observation - helper function will unpack it
         self.voxel_map.get_2d_map(debug=True)
-        if not os.path.exists('debug'):
-            os.mkdir('debug')
-        plt.savefig('debug/debug' + str(self.obs_count) + '.jpg')
+        if not os.path.exists(self.log_dir):
+            os.mkdir(self.log_dir)
+        plt.savefig(self.log_dir + '/debug' + str(self.obs_count) + '.jpg')
 
     def go_home(self):
         """Simple helper function to send the robot home safely after a trial."""
