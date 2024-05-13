@@ -35,12 +35,21 @@ class RobotClient(ABC):
         raise NotImplementedError()
 
     @abstractmethod
+    def get_base_pose(self) -> np.ndarray:
+        """Get the current pose of the base"""
+        raise NotImplementedError()
+
+    @abstractmethod
     def reset(self):
         """Reset everything in the robot's internal state"""
         raise NotImplementedError()
 
     @abstractmethod
     def switch_to_navigation_mode(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def switch_to_manipulation_mode(self):
         raise NotImplementedError()
 
     def in_manipulation_mode(self) -> bool:

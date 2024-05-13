@@ -41,7 +41,7 @@ class RosCamera(Camera):
         self._img = None
         self._t = Time()
         self._lock = threading.Lock()
-        print(name)
+        # print(name)
         self._camera_info_topic = name + "/camera_info"
 
         if verbose:
@@ -51,7 +51,7 @@ class RosCamera(Camera):
             CameraInfo, self._camera_info_topic, self.cam_info_callback, 100
         )
         cam_info = self.wait_for_camera_info()
-        print("Camera info:", cam_info)
+        # print("Camera info:", cam_info)
 
         # Buffer
         self.buffer_size = buffer_size
@@ -85,12 +85,12 @@ class RosCamera(Camera):
 
         self.near_val = 0.1
         self.far_val = 5.0
-        if verbose:
-            print()
-            print("---------------")
-            print("Created camera with info:")
-            print(cam_info)
-            print("---------------")
+        # if verbose:
+        #     print()
+        #     print("---------------")
+        #     print("Created camera with info:")
+        #     print(cam_info)
+        #     print("---------------")
         self.frame_id = cam_info.header.frame_id
 
         # Get the

@@ -36,7 +36,6 @@ from matplotlib import pyplot as plt
 
 from home_robot.agent.multitask.ok_robot_hw.global_parameters import *
 from home_robot.agent.multitask.ok_robot_hw.robot import HelloRobot as Manipulation_Wrapper
-from home_robot.agent.multitask.ok_robot_hw.args import get_args
 from home_robot.agent.multitask.ok_robot_hw.camera import RealSenseCamera
 from home_robot.agent.multitask.ok_robot_hw.utils.grasper_utils import pickup, move_to_point, capture_and_process_image
 from home_robot.agent.multitask.ok_robot_hw.utils.communication_utils import send_array, recv_array
@@ -52,8 +51,11 @@ class RobotAgentManip:
         parameters: Dict[str, Any],
         voxel_map: Optional[SparseVoxelMap] = None,
         manip_port: int = 5557,
+        re: int = 1,
+        log_dir: str = 'debug'
     ):
         print('------------------------YOU ARE NOW RUNNING PEIQI CODES V3-----------------')
+        self.log_dir = log_dir
         if isinstance(parameters, Dict):
             self.parameters = Parameters(**parameters)
         elif isinstance(parameters, Parameters):
@@ -61,7 +63,14 @@ class RobotAgentManip:
         else:
             raise RuntimeError(f"parameters of unsupported type: {type(parameters)}")
         self.robot = robot
-        self.manip_wrapper = Manipulation_Wrapper(self.robot, end_link = GRIPPER_MID_NODE)
+        if re == 1:
+            stretch_gripper_max = 0.3
+            end_link = "link_straight_gripper"
+        else:
+            stretch_gripper_max = 0.64
+            end_link = "link_gripper_s3_body"
+        self.transform_node = end_link
+        self.manip_wrapper = Manipulation_Wrapper(self.robot, stretch_gripper_max = stretch_gripper_max, end_link = end_link)
         self.robot.move_to_nav_posture()
 
         self.normalize_embeddings = True
@@ -136,7 +145,25 @@ class RobotAgentManip:
         """Returns reference to the navigation space."""
         return self.space
 
-    def rotate_in_place(self, steps: int = 10, visualize: bool = False) -> bool:
+    def look_around(self, visualize: bool = False):
+        logger.info("Look around to check")
+        time.sleep(1)
+        for pan in [0.5, 0., -0.5, -1., -1.5, -2.]:
+            for tilt in [-0.3, -0.45, -0.6]:
+                self.robot.head.set_pan_tilt(pan, tilt)
+                time.sleep(0.5)
+                # We need tilt to be -0.45 to help the performance of semantic memory, but we don' want to waste time adding it to obstalce map
+                if tilt == -0.6:
+                    self.update()
+
+            if visualize:
+                self.voxel_map.show(
+                    orig=np.zeros(3),
+                    xyt=self.robot.get_base_pose(),
+                    footprint=self.robot.get_robot_model().get_footprint(),
+                )
+
+    def rotate_in_place(self, steps: int = 6, visualize: bool = False) -> bool:
         """Simple helper function to make the robot rotate in place. Do a 360 degree turn to get some observations (this helps debug the robot and create a nice map).
 
         Returns:
@@ -152,6 +179,7 @@ class RobotAgentManip:
             self.robot.navigate_to([0, 0, step_size], relative=True, blocking=True)
             # TODO remove debug code
             # print(i, self.robot.get_base_pose())
+            self.robot.head.set_pan_tilt(pan = 0, tilt = np.random.uniform(-0.7, -0.4))
             self.update()
             if self.robot.last_motion_failed():
                 # We have a problem!
@@ -183,7 +211,6 @@ class RobotAgentManip:
 
     def update(self):
         """Step the data collector. Get a single observation of the world. Remove bad points, such as those from too far or too near the camera. Update the 3d world representation."""
-        self.robot.head.set_pan_tilt(pan = 0, tilt = np.random.uniform(-0.6, -0.3))
         obs = self.robot.get_observation()
         # self.image_sender.send_images(obs)
         self.obs_history.append(obs)
@@ -192,9 +219,9 @@ class RobotAgentManip:
 
         # Add observation - helper function will unpack it
         self.voxel_map.get_2d_map(debug=True)
-        if not os.path.exists('debug'):
-            os.mkdir('debug')
-        plt.savefig('debug/debug' + str(self.obs_count) + '.jpg')
+        if not os.path.exists(self.log_dir):
+            os.mkdir(self.log_dir)
+        plt.savefig(self.log_dir + '/debug' + str(self.obs_count) + '.jpg')
 
     def go_home(self):
         """Simple helper function to send the robot home safely after a trial."""
@@ -250,6 +277,7 @@ class RobotAgentManip:
         # Explore some number of times
         no_success_explore = True
         for i in range(explore_iter):
+            self.robot.move_to_nav_posture()
             print("\n" * 2)
             print("-" * 20, i + 1, "/", explore_iter, "-" * 20)
             start = self.robot.get_base_pose()
@@ -340,7 +368,7 @@ class RobotAgentManip:
                     self.robot.navigate_to(
                         [0, 0, -np.pi / 4], relative=True, blocking=True
                     )
-
+            # self.look_around()
             # Append latest observations
             # self.update()
             # self.rotate_in_place()
@@ -433,11 +461,10 @@ class RobotAgentManip:
             return True
         else:
             print('Navigation Failure!')
-            return False
-        # self.rotate_in_place()
-        # self.rotate_in_place()
+            return false
+        # self.look_ahead()
 
-    def place(self, text, init_tilt = INIT_HEAD_TILT, transform_node = GRIPPER_MID_NODE, base_node = TOP_CAMERA_NODE):
+    def place(self, text, init_tilt = INIT_HEAD_TILT, base_node = TOP_CAMERA_NODE):
         '''
             An API for running placing. By calling this API, human will ask the robot to place whatever it holds
             onto objects specified by text queries A
@@ -474,7 +501,7 @@ class RobotAgentManip:
         time.sleep(2)
 
         # Placing the object
-        move_to_point(self.manip_wrapper, translation, base_node, transform_node, move_mode=0)
+        move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
         self.manip_wrapper.move_to_position(gripper_pos=1)
 
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
@@ -496,7 +523,7 @@ class RobotAgentManip:
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])
         return True
 
-    def manipulate(self, text, init_tilt = INIT_HEAD_TILT, transform_node = GRIPPER_MID_NODE, base_node = TOP_CAMERA_NODE):
+    def manipulate(self, text, init_tilt = INIT_HEAD_TILT, base_node = TOP_CAMERA_NODE):
         '''
             An API for running manipulation. By calling this API, human will ask the robot to pick up objects
             specified by text queries A
@@ -534,7 +561,7 @@ class RobotAgentManip:
             return False
         
         if input('Do you want to do this manipulation? Y or N ') != 'N':
-            pickup(self.manip_wrapper, rotation, translation, base_node, transform_node, gripper_depth = depth)
+            pickup(self.manip_wrapper, rotation, translation, base_node, self.transform_node, gripper_depth = depth)
     
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])

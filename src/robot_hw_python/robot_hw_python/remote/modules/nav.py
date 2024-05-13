@@ -39,6 +39,9 @@ class StretchNavigationClient(AbstractControlModule):
         """Called when interface is enabled."""
         result = self._ros_client.nav_mode_service.call(Trigger.Request())
         self._ros_client.get_logger().info(result.message)
+        rate = self._ros_client.create_rate(1 / T_LOC_STABILIZE)
+        while self._ros_client._current_mode != 'navigation':
+            rate.sleep()
         return result.success
 
     def _disable_hook(self) -> bool:
