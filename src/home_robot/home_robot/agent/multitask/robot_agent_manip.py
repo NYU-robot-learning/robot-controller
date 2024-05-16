@@ -279,9 +279,10 @@ class RobotAgentManip:
         # Explore some number of times
         no_success_explore = True
         for i in range(explore_iter):
-            self.robot.move_to_nav_posture()
             print("\n" * 2)
             print("-" * 20, i + 1, "/", explore_iter, "-" * 20)
+            self.look_around()
+            self.robot.move_to_nav_posture()
             start = self.robot.get_base_pose()
             start_is_valid = self.space.is_valid(start, verbose=True)
             # if start is not valid move backwards a bit
@@ -370,7 +371,6 @@ class RobotAgentManip:
                     self.robot.navigate_to(
                         [0, 0, -np.pi / 4], relative=True, blocking=True
                     )
-            # self.look_around()
             # Append latest observations
             # self.update()
             # self.rotate_in_place()
@@ -463,7 +463,7 @@ class RobotAgentManip:
             return True
         else:
             print('Navigation Failure!')
-            return false
+            return False
         # self.look_ahead()
 
     def place(self, text, init_tilt = INIT_HEAD_TILT, base_node = TOP_CAMERA_NODE):

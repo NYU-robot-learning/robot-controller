@@ -52,7 +52,7 @@ class RRT(Planner):
         validate_fn: Callable,
         p_sample_goal: float = 0.1,
         goal_tolerance: float = 1e-4,
-        max_iter: int = 100,
+        max_iter: int = 500,
     ):
         """Create RRT planner with configuration"""
         super(RRT, self).__init__(space, validate_fn)
@@ -76,10 +76,10 @@ class RRT(Planner):
         assert len(goal) == self.space.dof, "invalid goal dimensions"
         self.reset()
         self.start_time = time.time()
-        if not self.validate(start):
-            if verbose:
-                print("[Planner] invalid start")
-            return PlanResult(False)
+        # if not self.validate(start):
+        #     if verbose:
+        #         print("[Planner] invalid start")
+        #     return PlanResult(False)
         if not self.validate(goal):
             if verbose:
                 print("[Planner] invalid goal")

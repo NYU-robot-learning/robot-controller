@@ -340,7 +340,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
             import matplotlib.pyplot as plt
 
             plt.imshow(
-                mask.int()
+                mask.int() * 20
                 + expanded_mask.int() * 10
                 + explored.int()
                 + obstacles.int() * 5
@@ -513,8 +513,6 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
             len(xyt) == 2 or len(xyt) == 3
         ), f"xyt must be of size 2 or 3 instead of {len(xyt)}"
 
-        # debug = True
-
         frontier, outside_frontier, traversible = self.get_frontier(
             expand_size=expand_size, debug=debug
         )
@@ -544,6 +542,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         distances = frontier_map.compressed()
         xs, ys = np.where(~frontier_map.mask)
 
+        debug = True
         if debug:
             plt.subplot(121)
             plt.imshow(distance_map, interpolation="nearest")
@@ -554,7 +553,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
             plt.imshow(frontier_map, interpolation="nearest")
             plt.title("Distance to start (edges only)")
             plt.axis("off")
-            plt.show()
+            plt.savefig('debug_map.png')
 
         if verbose or debug:
             print(f"-> found {len(distances)} items")
