@@ -318,7 +318,9 @@ class RobotAgentManip:
                 try_to_plan_iter=try_to_plan_iter,
                 visualize=False,  # visualize,
                 expand_frontier_size=self.default_expand_frontier_size,
+                verbose = True
             )
+            plt.savefig(self.log_dir + '/get_frontier_debug_' + str(self.obs_count) + '.jpg')
 
             # if it succeeds, execute a trajectory to this position
             if res.success:

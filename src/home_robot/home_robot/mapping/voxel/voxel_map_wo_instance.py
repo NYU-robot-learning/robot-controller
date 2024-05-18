@@ -472,6 +472,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         outside_frontier = expanded_frontier & ~explored
         frontier = expanded_frontier & ~obstacles & explored
 
+        debug = True
         if debug:
             import matplotlib.pyplot as plt
 
@@ -493,7 +494,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
             plt.subplot(326)
             plt.imshow((frontier_edges).cpu().numpy())
             plt.title("frontier_edges")
-            plt.show()
+            # plt.show()
 
         return frontier, outside_frontier, traversible
 
