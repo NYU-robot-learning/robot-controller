@@ -47,8 +47,8 @@ class RRTConnect(RRT):
         # TODO: support goal sets
         self.goal_state = goal
         # Make sure we can actually start from this position
-        if not self.validate(start):
-            return PlanResult(False, reason="invalid start")
+        # if not self.validate(start):
+        #     return PlanResult(False, reason="invalid start")
         # Add start to the tree
         self.nodes_fwd.append(TreeNode(start))
         # Make sure the goal is reasonable too

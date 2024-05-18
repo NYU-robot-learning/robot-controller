@@ -61,7 +61,7 @@ Frame = namedtuple(
 
 VALID_FRAMES = ["camera", "world"]
 
-DEFAULT_GRID_SIZE = [256, 256]
+DEFAULT_GRID_SIZE = [128, 128]
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class SparseVoxelMapVoxel(object):
         smooth_kernel_size: int = 2,
         add_local_radius_points: bool = True,
         remove_visited_from_obstacles: bool = False,
-        local_radius: float = 0.15,
+        local_radius: float = 0.8,
         min_depth: float = 0.25,
         max_depth: float = 2.0,
         pad_obstacles: int = 0,
