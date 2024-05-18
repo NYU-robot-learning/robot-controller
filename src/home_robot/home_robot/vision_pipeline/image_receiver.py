@@ -26,6 +26,7 @@ from voxel_map_localizer import VoxelMapLocalizer
 import datetime
 
 import threading
+import scipy
 
 def load_socket(port_number):
     context = zmq.Context()
@@ -125,12 +126,11 @@ class ImageProcessor:
         max_depth = 2.0,
         img_port = 5555,
         text_port = 5556,
-        pcd_path: str = None
+        pcd_path: str = None,
+        navigation_only = False
     ):
         current_datetime = datetime.datetime.now()
         self.log = 'debug_' + current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
-        if not os.path.exists(self.log_dir):
-            os.mkdir(self.log_dir)
         self.min_depth = min_depth
         self.max_depth = max_depth
         self.obs_count = 0
@@ -147,9 +147,10 @@ class ImageProcessor:
 
         self.voxel_map_lock = threading.Lock()  # Create a lock for synchronizing access to `self.voxel_map_localizer`
 
-        self.img_thread = threading.Thread(target=self._recv_image)
-        self.img_thread.daemon = True
-        self.img_thread.start()
+        if not navigation_only:
+            self.img_thread = threading.Thread(target=self._recv_image)
+            self.img_thread.daemon = True
+            self.img_thread.start()
 
         # self.text_thread = threading.Thread(target=self._recv_text)
         # self.text_thread.daemon = True
@@ -179,6 +180,7 @@ class ImageProcessor:
         text = self.text_socket.recv_string()
         with self.voxel_map_lock:
             point = self.voxel_map_localizer.localize_AonB(text)
+            print('\n', text, point, '\n')
         send_array(self.text_socket, point)
 
     def _recv_image(self):
@@ -345,7 +347,7 @@ class ImageProcessor:
             valid_rgb = rgb.permute(1, 2, 0)[valid_mask]
             self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb)
     
-    def add_to_voxel_pcd(self, valid_xyz, feature, valid_rgb, weights = None, threshold = 0.85):
+    def add_to_voxel_pcd(self, valid_xyz, feature, valid_rgb, weights = None, threshold = 0.95):
         # Adding all points to voxelizedPointCloud is useless and expensive, we should exclude threshold of all points
         selected_indices = torch.randperm(len(valid_xyz))[:int((1 - threshold) * len(valid_xyz))]
         if len(selected_indices) == 0:
@@ -364,7 +366,45 @@ class ImageProcessor:
                                     rgb = valid_rgb,
                                     weights = weights)
 
+    def debug(self, log, number):
+        for i in range(number):
+            if i % 20 == 0:
+                print(i)
+                if i % 100 != 20:
+                    continue
+                points, _, _, rgb = self.voxel_map_localizer.voxel_pcd.get_pointcloud()
+                points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
+                pcd = numpy_to_pcd(points, rgb / 255)
+                if not os.path.exists('debug'):
+                    os.mkdir('debug')
+                o3d.io.write_point_cloud('debug' + '/debug_' + str(i) + '.pcd', pcd)
+            rgb = np.load(log + '/rgb' + str(i) + '.npy')
+            depth = np.load(log + '/depth' + str(i) + '.npy')
+            intrinsics = np.load(log + '/intrinsics' + str(i) + '.npy')
+            pose = np.load(log + '/pose' + str(i) + '.npy')
+            world_xyz = get_xyz(depth, pose, intrinsics).squeeze(0)
+
+            rgb, depth = torch.from_numpy(rgb), torch.from_numpy(depth)
+            rgb = rgb.permute(2, 0, 1).to(torch.uint8)
+
+            median_depth = torch.from_numpy(
+                scipy.ndimage.median_filter(depth, size=5)
+            )
+            median_filter_error = (depth - median_depth).abs()
+            valid_depth = torch.logical_and(depth < self.max_depth, depth > self.min_depth)
+            valid_depth = (
+                valid_depth
+                & (median_filter_error < 0.01).bool()
+            )
+
+            if self.owl:
+                self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+            else:
+                self.run_mask_clip(rgb, ~valid_depth, world_xyz)
+
     def process_rgbd_images(self, data):
+        if not os.path.exists(self.log):
+            os.mkdir(self.log)
         self.obs_count += 1
         w, h = data[:2]
         w, h = int(w), int(h)
@@ -383,26 +423,36 @@ class ImageProcessor:
         rgb, depth = torch.from_numpy(rgb), torch.from_numpy(depth)
         rgb = rgb.permute(2, 0, 1).to(torch.uint8)
 
+        median_depth = torch.from_numpy(
+            scipy.ndimage.median_filter(depth, size=5)
+        )
+        median_filter_error = (depth - median_depth).abs()
+        valid_depth = torch.logical_and(depth < self.max_depth, depth > self.min_depth)
+        valid_depth = (
+            valid_depth
+            & (median_filter_error < 0.01).bool()
+        )
+
         # with self.voxel_map_lock:
         #     self.voxel_map_localizer.voxel_pcd.clear_points(depth, intrinsics, pose)
 
         if self.owl:
-            self.run_owl_sam_clip(rgb, torch.logical_or(depth > self.max_depth, depth < self.min_depth), world_xyz)
+            self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
         else:
-            self.run_mask_clip(rgb, torch.logical_or(depth > self.max_depth, depth < self.min_depth), world_xyz)
+            self.run_mask_clip(rgb, ~valid_depth, world_xyz)
 
 if __name__ == "__main__":
     # imageProcessor = ImageProcessor(pcd_path = 'memory.pt')
-    imageProcessor = ImageProcessor(pcd_path = None)   
+    imageProcessor = ImageProcessor(pcd_path = 'debug_2024-05-15_14-18-22/memory.pt', navigation_only = True)   
     try:  
         while True:
             imageProcessor.recv_text()
     except KeyboardInterrupt:
         if not imageProcessor.voxel_map_localizer.voxel_pcd._points is None:
             print('Stop streaming images and write memory data, might take a while, please wait')
-            torch.save(imageProcessor.voxel_map_localizer.voxel_pcd, 'memory.pt')
+            torch.save(imageProcessor.voxel_map_localizer.voxel_pcd, imageProcessor.log + '/memory.pt')
             points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
             points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
             pcd = numpy_to_pcd(points, rgb / 255)
-            o3d.io.write_point_cloud(imageProcessor.log + 'debug.pcd', pcd)
+            o3d.io.write_point_cloud(imageProcessor.log + '/debug.pcd', pcd)
             print('finished')

@@ -475,18 +475,24 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         if debug:
             import matplotlib.pyplot as plt
 
-            plt.subplot(221)
-            print("obstacles")
+            plt.subplot(321)
             plt.imshow(obstacles.cpu().numpy())
-            plt.subplot(222)
+            plt.title("obstacles")
+            plt.subplot(322)
             plt.imshow(explored.bool().cpu().numpy())
             plt.title("explored")
-            plt.subplot(223)
-            plt.imshow((traversible + frontier).cpu().numpy())
-            plt.title("traversible + frontier")
-            plt.subplot(224)
-            plt.imshow((frontier_edges).cpu().numpy())
+            plt.subplot(323)
+            plt.imshow((traversible & frontier).cpu().numpy())
+            plt.title("traversible & frontier")
+            plt.subplot(324)
+            plt.imshow((expanded_frontier).cpu().numpy())
             plt.title("just frontiers")
+            plt.subplot(325)
+            plt.imshow((edges).cpu().numpy())
+            plt.title("edges")
+            plt.subplot(326)
+            plt.imshow((frontier_edges).cpu().numpy())
+            plt.title("frontier_edges")
             plt.show()
 
         return frontier, outside_frontier, traversible
