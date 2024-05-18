@@ -542,7 +542,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         distances = frontier_map.compressed()
         xs, ys = np.where(~frontier_map.mask)
 
-        debug = True
+        # debug = True
         if debug:
             plt.subplot(121)
             plt.imshow(distance_map, interpolation="nearest")
@@ -553,7 +553,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
             plt.imshow(frontier_map, interpolation="nearest")
             plt.title("Distance to start (edges only)")
             plt.axis("off")
-            plt.savefig('debug_map.png')
+            # plt.savefig('debug_map.png')
 
         if verbose or debug:
             print(f"-> found {len(distances)} items")
