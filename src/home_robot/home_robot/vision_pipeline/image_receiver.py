@@ -28,6 +28,8 @@ import datetime
 import threading
 import scipy
 
+from transformers import AutoProcessor, AutoModel
+
 def load_socket(port_number):
     context = zmq.Context()
     socket = context.socket(zmq.REP)
@@ -121,6 +123,7 @@ def get_xyz(depth, pose, intrinsics):
 class ImageProcessor:
     def __init__(self,  
         owl = True, 
+        siglip = True,
         device = 'cuda',
         min_depth = 0.25,
         max_depth = 2.0,
@@ -129,6 +132,7 @@ class ImageProcessor:
         pcd_path: str = None,
         navigation_only = False
     ):
+        self.siglip = siglip
         current_datetime = datetime.datetime.now()
         self.log = 'debug_' + current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
         self.min_depth = min_depth
@@ -157,8 +161,15 @@ class ImageProcessor:
         # self.text_thread.start()
 
     def create_vision_model(self):
-        self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
-        self.clip_model.eval()
+        # self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
+        # self.clip_model.eval()
+        if not self.siglip:
+            self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
+            self.clip_model.eval()
+        else:
+            self.clip_model = AutoModel.from_pretrained("google/siglip-base-patch16-224").to(self.device)
+            self.clip_preprocess = AutoProcessor.from_pretrained("google/siglip-base-patch16-224")
+            self.clip_model.eval()
         if self.owl:
             self.owl_processor = AutoProcessor.from_pretrained("google/owlvit-base-patch32")
             self.owl_model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32").eval().to(self.device)
@@ -169,7 +180,7 @@ class ImageProcessor:
             self.mask_predictor.model = self.mask_predictor.model.eval().to(self.device)
             self.texts = [['a photo of ' + text for text in CLASS_LABELS_200]]
         # self.voxel_map_localizer = VoxelMapLocalizer(device = self.device)
-        self.voxel_map_localizer = VoxelMapLocalizer(device = 'cpu')
+        self.voxel_map_localizer = VoxelMapLocalizer(device = 'cpu', siglip = self.siglip)
         if self.pcd_path is not None:
             print('Loading old semantic memory')
             self.voxel_map_localizer.voxel_pcd = torch.load(self.pcd_path)
@@ -298,10 +309,21 @@ class ImageProcessor:
             cv2.imwrite(self.log + "/seg" + str(self.obs_count) + ".jpg", image_vis)
     
             crops = []
-            for box in bounding_boxes:
-                tl_x, tl_y, br_x, br_y = box
-                crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
-            features = self.clip_model.encode_image(torch.stack(crops, dim = 0).to(self.device))
+            if not self.siglip:
+                for box in bounding_boxes:
+                    tl_x, tl_y, br_x, br_y = box
+                    crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
+                features = self.clip_model.encode_image(torch.stack(crops, dim = 0).to(self.device))
+            else:
+                for box in bounding_boxes:
+                    tl_x, tl_y, br_x, br_y = box
+                    crops.append(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])
+                inputs = self.clip_preprocess(images = crops, padding="max_length", return_tensors="pt").to(self.device)
+                features = self.clip_model.get_image_features(**inputs)
+            # for box in bounding_boxes:
+            #     tl_x, tl_y, br_x, br_y = box
+            #     crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
+            # features = self.clip_model.encode_image(torch.stack(crops, dim = 0).to(self.device))
             features = F.normalize(features, dim = -1).cpu()
             
             # Debug code, let the clip select bounding boxes most aligned with a text query, used to check whether clip embeddings for

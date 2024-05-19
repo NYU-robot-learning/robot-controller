@@ -1,5 +1,5 @@
 import numpy as np
-import PyKDL
+# import PyKDL
 
 def euler_to_quat(r, p, y):
     sr, sp, sy = np.sin(r/2.0), np.sin(p/2.0), np.sin(y/2.0)

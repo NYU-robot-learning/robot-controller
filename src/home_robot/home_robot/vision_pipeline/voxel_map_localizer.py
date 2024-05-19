@@ -10,10 +10,20 @@ from voxel import VoxelizedPointcloud
 from typing import List, Optional, Tuple, Union
 from torch import Tensor
 
+from transformers import AutoProcessor, AutoModel
+
 class VoxelMapLocalizer():
-    def __init__(self, model_config = 'ViT-B/16', device = 'cuda'):
+    def __init__(self, model_config = 'ViT-B/16', device = 'cuda', siglip = True):
         self.device = device
-        self.clip_model, self.preprocessor = clip.load(model_config, device=device)
+        # self.clip_model, self.preprocessor = clip.load(model_config, device=device)
+        self.siglip = siglip
+        if not self.siglip:
+            self.clip_model, self.preprocessor = clip.load("ViT-B/16", device=self.device)
+            self.clip_model.eval()
+        else:
+            self.clip_model = AutoModel.from_pretrained("google/siglip-base-patch16-224").to(self.device)
+            self.preprocessor = AutoProcessor.from_pretrained("google/siglip-base-patch16-224")
+            self.clip_model.eval()
         self.voxel_pcd = VoxelizedPointcloud().to(self.device)
 
     def add(self,
@@ -37,14 +47,20 @@ class VoxelMapLocalizer():
     def calculate_clip_and_st_embeddings_for_queries(self, queries):
         if isinstance(queries, str):
             queries = [queries] 
-        text = clip.tokenize(queries).to(self.device)
-        all_clip_tokens = self.clip_model.encode_text(text)
+        if self.siglip:
+            inputs = self.preprocessor(text=queries, padding="max_length", return_tensors="pt")
+            all_clip_tokens = self.clip_model.get_text_features(**inputs)
+        else:
+            text = clip.tokenize(queries).to(self.device)
+            all_clip_tokens = self.clip_model.encode_text(text)
+        # text = clip.tokenize(queries).to(self.device)
+        # all_clip_tokens = self.clip_model.encode_text(text)
         all_clip_tokens = F.normalize(all_clip_tokens, p=2, dim=-1)
         return all_clip_tokens
         
     def find_alignment_over_model(self, queries):
         clip_text_tokens = self.calculate_clip_and_st_embeddings_for_queries(queries)
-        points, features, _, _ = self.voxel_pcd.get_pointcloud()
+        points, features, weights, _ = self.voxel_pcd.get_pointcloud()
         features = F.normalize(features, p=2, dim=-1)
         point_alignments = clip_text_tokens.float() @ features.float().T
     
