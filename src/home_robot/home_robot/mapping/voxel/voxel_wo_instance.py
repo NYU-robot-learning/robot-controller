@@ -644,7 +644,7 @@ class SparseVoxelMapVoxel(object):
         voxels = scatter3d(xyz, counts, grid_size)
 
         # Compute the obstacle voxel grid based on what we've seen
-        obstacle_voxels = voxels[:, :, min_height:]
+        obstacle_voxels = voxels[:, :, min_height:max_height]
         obstacles_soft = torch.sum(obstacle_voxels, dim=-1)
         obstacles = obstacles_soft > self.obs_min_density
 

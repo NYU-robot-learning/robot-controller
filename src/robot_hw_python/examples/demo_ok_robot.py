@@ -86,7 +86,7 @@ def main(
     # robot.nav.navigate_to([0, 0, 0])
 
     print("- Load parameters")
-    parameters = get_parameters("src/home_robot_hw/configs/default.yaml")
+    parameters = get_parameters("src/robot_hw_python/configs/default.yaml")
     # print(parameters)
     if explore_iter >= 0:
         parameters["exploration_steps"] = explore_iter
