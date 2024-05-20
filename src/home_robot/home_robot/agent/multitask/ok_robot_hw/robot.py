@@ -1,5 +1,5 @@
 import numpy as np
-# import PyKDL
+import PyKDL
 import sys
 import os
 

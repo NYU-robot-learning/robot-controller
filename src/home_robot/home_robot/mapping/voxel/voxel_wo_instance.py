@@ -674,7 +674,6 @@ class SparseVoxelMapVoxel(object):
         #        explored.float().unsqueeze(0).unsqueeze(0),
         #        self.dilate_obstacles_kernel,
         #    )[0, 0].bool()
-
         if self.smooth_kernel_size > 0:
             # Opening and closing operations here on explore
             explored = binary_erosion(
@@ -682,19 +681,20 @@ class SparseVoxelMapVoxel(object):
                     explored.float().unsqueeze(0).unsqueeze(0), self.smooth_kernel
                 ),
                 self.smooth_kernel,
-            )  # [0, 0].bool()
+            ) #[0, 0].bool()
             explored = binary_dilation(
                 binary_erosion(explored, self.smooth_kernel),
                 self.smooth_kernel,
             )[0, 0].bool()
 
             # Obstacles just get dilated and eroded
-            obstacles = binary_erosion(
-                binary_dilation(
-                    obstacles.float().unsqueeze(0).unsqueeze(0), self.smooth_kernel
-                ),
-                self.smooth_kernel,
-            )[0, 0].bool()
+            # This might influence the obstacle size
+            # obstacles = binary_erosion(
+            #     binary_dilation(
+            #         obstacles.float().unsqueeze(0).unsqueeze(0), self.smooth_kernel
+            #     ),
+            #     self.smooth_kernel,
+            # )[0, 0].bool()
 
         debug = True
         if debug:
@@ -744,7 +744,7 @@ class SparseVoxelMapVoxel(object):
         ):
             return None
         else:
-            return grid_xy
+            return grid_xy.int()
 
     def plan_to_grid_coords(
         self, plan_result: PlanResult
@@ -874,12 +874,14 @@ class SparseVoxelMapVoxel(object):
         if grid_xy is None:
             # Conversion failed - probably out of bounds
             return False
-        if robot is not None:
-            # TODO: check against robot geometry
-            raise NotImplementedError(
-                "not currently checking against robot base geometry"
-            )
-        return True
+        navigable = ~obstacles & explored
+        return navigable[grid_xy[0], grid_xy[1]]
+        # if robot is not None:
+        #     # TODO: check against robot geometry
+        #     raise NotImplementedError(
+        #         "not currently checking against robot base geometry"
+        #     )
+        # return True
 
     def _get_boxes_from_points(
         self,

@@ -28,6 +28,7 @@ from home_robot.motion import (
     RRTConnect,
     Shortcut,
     SimplifyXYT,
+    AStar
 )
 
 import zmq
@@ -95,6 +96,7 @@ class RobotAgentManip:
                 local_radius=parameters["local_radius"],
                 obs_min_height=parameters["obs_min_height"],
                 obs_max_height=parameters["obs_max_height"],
+                obs_min_density = parameters["obs_min_density"],
                 min_depth=parameters["min_depth"],
                 max_depth=parameters["max_depth"],
                 pad_obstacles=parameters["pad_obstacles"],
@@ -131,15 +133,16 @@ class RobotAgentManip:
         )
 
         # Create a simple motion planner
-        self.planner = RRTConnect(self.space, self.space.is_valid)
-        if parameters["motion_planner"]["shortcut_plans"]:
-            self.planner = Shortcut(
-                self.planner, parameters["motion_planner"]["shortcut_iter"]
-            )
-        if parameters["motion_planner"]["simplify_plans"]:
-            self.planner = SimplifyXYT(
-                self.planner, min_step=0.05, max_step=1.0, num_steps=8
-            )
+        self.planner = AStar(self.space)
+        # self.planner = RRTConnect(self.space, self.space.is_valid)
+        # if parameters["motion_planner"]["shortcut_plans"]:
+        #     self.planner = Shortcut(
+        #         self.planner, parameters["motion_planner"]["shortcut_iter"]
+        #     )
+        # if parameters["motion_planner"]["simplify_plans"]:
+        #     self.planner = SimplifyXYT(
+        #         self.planner, min_step=0.05, max_step=1.0, num_steps=8
+        #     )
 
         timestamp = f"{datetime.datetime.now():%Y-%m-%d-%H-%M-%S}"
 
