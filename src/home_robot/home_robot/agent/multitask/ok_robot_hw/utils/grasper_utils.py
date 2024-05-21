@@ -1,4 +1,4 @@
-import PyKDL
+# import PyKDL
 import time
 import math
 
@@ -6,6 +6,7 @@ from home_robot.agent.multitask.ok_robot_hw.image_publisher import ImagePublishe
 from home_robot.agent.multitask.ok_robot_hw.global_parameters import *
 
 def capture_and_process_image(camera, mode, obj, socket, hello_robot):
+    import PyKDL
     
     print('Currently in ' + mode + ' mode and the robot is about to manipulate ' + obj + '.')
 
@@ -66,6 +67,7 @@ def move_to_point(robot, point, base_node, gripper_node, move_mode=1, pitch_rota
     """
         Function for moving the gripper to a specific point
     """
+    import PyKDL
     rotation = PyKDL.Rotation(1, 0, 0, 0, 1, 0, 0, 0, 1)
 
     dest_frame = PyKDL.Frame(rotation, point)
@@ -97,6 +99,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
         3. Move the base such gripper in line with the grasp
         4. Gradually Move the gripper to the desired position
     """
+    import PyKDL
     # Transforming the final point from Model camera frame to robot camera frame
     point = PyKDL.Vector(-translation[1], -translation[0], translation[2])
 

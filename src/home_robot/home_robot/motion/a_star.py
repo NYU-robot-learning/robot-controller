@@ -48,11 +48,11 @@ class AStar():
     ):
         """Create RRT planner with configuration"""
         self.space = space
+        obs, exp = self.space.voxel_map.get_2d_map()
+        self._navigable = ~obs & exp
 
     def point_is_occupied(self, x: int, y: int) -> bool:
-        obs, exp = self.space.voxel_map.get_2d_map()
-        navigable = ~obs & exp
-        return not bool(navigable[x][y])
+        return not bool(self._navigable[x][y])
     
     def to_pt(self, xy: tuple[float, float]) -> tuple[int, int]:
         xy = torch.tensor([xy[0], xy[1]])

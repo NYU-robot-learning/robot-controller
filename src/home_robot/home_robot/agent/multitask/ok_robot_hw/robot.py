@@ -1,9 +1,9 @@
 import numpy as np
-import PyKDL
+# import PyKDL
 import sys
 import os
 
-from urdf_parser_py.urdf import URDF
+# from urdf_parser_py.urdf import URDF
 from scipy.spatial.transform import Rotation as R
 import math
 import time
@@ -57,6 +57,8 @@ class HelloRobot:
         """
             Kdl Setup for forward and Inverse Kinematics
         """
+        import PyKDL
+        from urdf_parser_py.urdf import URDF
         self.joints = {'joint_fake':0}
         self.head_joints = {'joint_fake':0}
         
@@ -235,6 +237,7 @@ class HelloRobot:
 
             Mainly used for transforming co-ordinates from camera frame to gripper frame.
         '''
+        import PyKDL
 
         # Intializing chain -> maintains list of nodes from base link to corresponding nodes
         chain1 = self.kdl_tree.getChain('base_link', node1)
@@ -280,6 +283,7 @@ class HelloRobot:
         """
             Function to move the gripper to a desired translation and rotation
         """
+        import PyKDL
         translation = [translation_tensor[0], translation_tensor[1], translation_tensor[2]]
         rotation = rotational_tensor
         # print('translation and rotation', translation_tensor, rotational_tensor)

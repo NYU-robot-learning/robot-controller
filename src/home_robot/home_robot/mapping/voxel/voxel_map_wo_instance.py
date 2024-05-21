@@ -240,7 +240,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
     def is_valid(
         self,
         state: torch.Tensor,
-        # is_safe_threshold=1.0,
+        is_safe_threshold=1.0,
         debug: bool = False,
         verbose: bool = False,
     ) -> bool:
@@ -249,66 +249,66 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         if isinstance(state, np.ndarray):
             state = torch.from_numpy(state).float()
         ok = bool(self.voxel_map.xyt_is_safe(state[:2]))
-        if verbose:
-            print('is navigable:', ok)
-        return ok
-        # if not ok:
-        #     # This was
-        #     return False
+        # if verbose:
+        #     print('is navigable:', ok)
+        # return ok
+        if not ok:
+            # This was
+            return False
 
         # Now sample mask at this location
-        # mask = self.get_oriented_mask(state[-1])
-        # assert mask.shape[0] == mask.shape[1], "square masks only for now"
-        # dim = mask.shape[0]
-        # half_dim = dim // 2
-        # grid_xy = self.voxel_map.xy_to_grid_coords(state[:2])
-        # x0 = int(grid_xy[0]) - half_dim
-        # x1 = x0 + dim
-        # y0 = int(grid_xy[1]) - half_dim
-        # y1 = y0 + dim
+        mask = self.get_oriented_mask(state[-1])
+        assert mask.shape[0] == mask.shape[1], "square masks only for now"
+        dim = mask.shape[0]
+        half_dim = dim // 2
+        grid_xy = self.voxel_map.xy_to_grid_coords(state[:2])
+        x0 = int(grid_xy[0]) - half_dim
+        x1 = x0 + dim
+        y0 = int(grid_xy[1]) - half_dim
+        y1 = y0 + dim
 
-        # obstacles, explored = self.voxel_map.get_2d_map()
+        obstacles, explored = self.voxel_map.get_2d_map()
 
-        # crop_obs = obstacles[x0:x1, y0:y1]
-        # crop_exp = explored[x0:x1, y0:y1]
-        # assert mask.shape == crop_obs.shape
-        # assert mask.shape == crop_exp.shape
+        crop_obs = obstacles[x0:x1, y0:y1]
+        crop_exp = explored[x0:x1, y0:y1]
+        assert mask.shape == crop_obs.shape
+        assert mask.shape == crop_exp.shape
 
-        # collision = torch.any(crop_obs & mask)
+        collision = torch.any(crop_obs & mask)
 
-        # p_is_safe = (
-        #     torch.sum((crop_exp & mask) | ~mask) / (mask.shape[0] * mask.shape[1])
-        # ).item()
-        # is_safe = p_is_safe >= is_safe_threshold
-        # if verbose:
-        #     print(f"{collision=}, {is_safe=}, {p_is_safe=}, {is_safe_threshold=}")
+        p_is_safe = (
+            torch.sum((crop_exp & mask) | ~mask) / (mask.shape[0] * mask.shape[1])
+        ).item()
+        is_safe = p_is_safe >= is_safe_threshold
+        if verbose:
+            print(f"{collision=}, {is_safe=}, {p_is_safe=}, {is_safe_threshold=}")
 
-        # valid = bool((not collision) and is_safe)
-        # if debug:
-        #     if collision:
-        #         print("- state in collision")
-        #     if not is_safe:
-        #         print("- not safe")
+        valid = bool((not collision) and is_safe)
+        if debug:
+            if collision:
+                print("- state in collision")
+            if not is_safe:
+                print("- not safe")
 
-        #     print(f"{valid=}")
-        #     obs = obstacles.cpu().numpy().copy()
-        #     exp = explored.cpu().numpy().copy()
-        #     obs[x0:x1, y0:y1] = 1
-        #     plt.subplot(321)
-        #     plt.imshow(obs)
-        #     plt.subplot(322)
-        #     plt.imshow(exp)
-        #     plt.subplot(323)
-        #     plt.imshow(crop_obs.cpu().numpy())
-        #     plt.title("obstacles")
-        #     plt.subplot(324)
-        #     plt.imshow(crop_exp.cpu().numpy())
-        #     plt.title("explored")
-        #     plt.subplot(325)
-        #     plt.imshow(mask.cpu().numpy())
-        #     plt.show()
+            print(f"{valid=}")
+            obs = obstacles.cpu().numpy().copy()
+            exp = explored.cpu().numpy().copy()
+            obs[x0:x1, y0:y1] = 1
+            plt.subplot(321)
+            plt.imshow(obs)
+            plt.subplot(322)
+            plt.imshow(exp)
+            plt.subplot(323)
+            plt.imshow(crop_obs.cpu().numpy())
+            plt.title("obstacles")
+            plt.subplot(324)
+            plt.imshow(crop_exp.cpu().numpy())
+            plt.title("explored")
+            plt.subplot(325)
+            plt.imshow(mask.cpu().numpy())
+            plt.show()
 
-        # return valid
+        return valid
 
     def sample_near_mask(
         self,
