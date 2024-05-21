@@ -248,7 +248,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         assert len(state) == 3
         if isinstance(state, np.ndarray):
             state = torch.from_numpy(state).float()
-        ok = self.voxel_map.xyt_is_safe(state[:2])
+        ok = bool(self.voxel_map.xyt_is_safe(state[:2]))
         if verbose:
             print('is navigable:', ok)
         return ok

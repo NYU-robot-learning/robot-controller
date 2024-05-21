@@ -9,3 +9,4 @@ from .rrt_connect import RRTConnect
 from .shortcut import Shortcut
 from .simplify import SimplifyXYT
 from .space import XYT, ConfigurationSpace, Node
+from .a_star import AStar

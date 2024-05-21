@@ -12,6 +12,12 @@ import heapq
 import math
 import torch
 
+class Node():
+    """Stores an individual spot in the tree"""
+
+    def __init__(self, state):
+        self.state = state
+
 def neighbors(pt: tuple[int, int]) -> list[tuple[int, int]]:
     return [(pt[0] + dx, pt[1] + dy) for dx in range(-1, 2) for dy in range(-1, 2) if (dx, dy) != (0, 0)]
 
@@ -274,6 +280,6 @@ class AStar():
         trajectory = []
         for i in range(len(waypoints) - 1):
             theta = compute_theta(waypoints[i][0], waypoints[i][1], waypoints[i + 1][0], waypoints[i + 1][1])
-            trajectory.append([waypoints[i][0], waypoints[i][1], float(theta)])
-        trajectory.append([waypoints[-1][0], waypoints[-1][1], goal[-1]])
+            trajectory.append(Node([waypoints[i][0], waypoints[i][1], float(theta)]))
+        trajectory.append(Node([waypoints[-1][0], waypoints[-1][1], goal[-1]]))
         return PlanResult(True, trajectory = trajectory)

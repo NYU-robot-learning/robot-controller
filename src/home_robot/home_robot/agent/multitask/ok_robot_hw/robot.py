@@ -3,7 +3,7 @@ import PyKDL
 import sys
 import os
 
-# from urdf_parser_py.urdf import URDF
+from urdf_parser_py.urdf import URDF
 from scipy.spatial.transform import Rotation as R
 import math
 import time
