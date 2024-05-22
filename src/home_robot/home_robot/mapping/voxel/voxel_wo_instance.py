@@ -666,8 +666,8 @@ class SparseVoxelMapVoxel(object):
 
         # Add explored radius around the robot, up to min depth
         # TODO: make sure lidar is supported here as well; if we do not have lidar assume a certain radius is explored
-        explored_soft += self._visited
         explored = explored_soft > self.exp_min_density
+        explored = (torch.zeros_like(explored) + self._visited).to(torch.bool) | explored
 
         # Also shrink the explored area to build more confidence
         # That we will not collide with anything while moving around
