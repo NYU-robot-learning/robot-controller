@@ -48,7 +48,13 @@ class AStar():
     ):
         """Create RRT planner with configuration"""
         self.space = space
+        self.reset()
+
+    def reset(self):
+        print('loading the up to date navigable map')
+        print('Wait')
         obs, exp = self.space.voxel_map.get_2d_map()
+        print('up to date navigable map loaded')
         self._navigable = ~obs & exp
 
     def point_is_occupied(self, x: int, y: int) -> bool:
@@ -266,6 +272,7 @@ class AStar():
         # assert len(start) == self.space.dof, "invalid start dimensions"
         # assert len(goal) == self.space.dof, "invalid goal dimensions"
         # self.start_time = time.time()
+        self.reset()
         if not self.space.is_valid(goal):
             if verbose:
                 print("[Planner] invalid goal")
