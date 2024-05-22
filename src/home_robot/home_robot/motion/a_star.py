@@ -172,7 +172,9 @@ class AStar():
         for neighbor_pt in neighbor_pts:
             if not self.point_is_occupied(*neighbor_pt):
                 return neighbor_pt
-        raise ValueError("The robot might stand on a non navigable point, so check obstacle map and restart roslaunch")
+        print("The robot might stand on a non navigable point, so check obstacle map and restart roslaunch")
+        return None
+        # raise ValueError("The robot might stand on a non navigable point, so check obstacle map and restart roslaunch")
 
     def get_reachable_points(self, start_pt: tuple[int, int]) -> set[tuple[int, int]]:
         """Gets all reachable points from a given starting point.
@@ -185,6 +187,8 @@ class AStar():
         """
 
         start_pt = self.get_unoccupied_neighbor(start_pt)
+        if start_pt is None:
+            return set()
 
         reachable_points: set[tuple[int, int]] = set()
         to_visit = [start_pt]
@@ -214,6 +218,8 @@ class AStar():
         # start_pt = self.get_unoccupied_neighbor(start_pt, end_pt)
         start_pt = self.get_unoccupied_neighbor(start_pt)
         end_pt = self.get_unoccupied_neighbor(end_pt, start_pt)
+        if start_pt is None or end_pt is None:
+            return None
 
         # Implements A* search.
         q = [(0, start_pt)]
