@@ -5,11 +5,11 @@ encoder_args: "ViT-B/32"
 open_vocab_cat_map_file: projects/real_world_ovmm/configs/example_cat_map.json
 
 # Sparse Voxel Map parameters
-voxel_size: 0.05
+voxel_size: 0.1
 # 0.05 seems too low
 obs_min_height: 0.1  # Ignore things less than this high when planning motions
 obs_max_height: 1.5  # Ignore things over this height (eg ceilings)
-obs_min_density: 10  # This many points makes it an obstacle
+obs_min_density: 100  # This many points makes it an obstacle
 
 # Padding
 pad_obstacles: 2  # Add this many units (voxel_size) to the area around obstacles
@@ -31,8 +31,8 @@ filters:
         # use_voxel_filter: True
 
 # Exploration
-in_place_rotation_steps: 8
-# in_place_rotation_steps: 0
+# in_place_rotation_steps: 8
+in_place_rotation_steps: 0
 
 # TAMP parameters
 guarantee_instance_is_reachable: True
@@ -43,11 +43,11 @@ max_near_distance: 0.3
 # Navigation space - used for motion planning and computing goals.
 step_size: 0.1
 rotation_step_size: 0.2 
-dilate_frontier_size: 3  # Used to shrink the frontier back from the edges of the world
-dilate_obstacle_size: 4  # Used when selecting goals and computing what the "frontier" is 
-default_expand_frontier_size: 10  # margin along the frontier where final robot position can be
+dilate_frontier_size: 2  # Used to shrink the frontier back from the edges of the world
+dilate_obstacle_size: 0  # Used when selecting goals and computing what the "frontier" is 
+default_expand_frontier_size: 5  # margin along the frontier where final robot position can be
 motion_planner:
-        simplify_plans: True
+        simplify_plans: False
         shortcut_plans: True
         shortcut_iter: 100
 

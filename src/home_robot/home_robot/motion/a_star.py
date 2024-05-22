@@ -1,6 +1,6 @@
 import time
 from random import random
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple, Set
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,7 +18,7 @@ class Node():
     def __init__(self, state):
         self.state = state
 
-def neighbors(pt: tuple[int, int]) -> list[tuple[int, int]]:
+def neighbors(pt: Tuple[int, int]) -> List[Tuple[int, int]]:
     return [(pt[0] + dx, pt[1] + dy) for dx in range(-1, 2) for dy in range(-1, 2) if (dx, dy) != (0, 0)]
 
 def compute_theta(cur_x, cur_y, end_x, end_y):
@@ -60,20 +60,20 @@ class AStar():
     def point_is_occupied(self, x: int, y: int) -> bool:
         return not bool(self._navigable[x][y])
     
-    def to_pt(self, xy: tuple[float, float]) -> tuple[int, int]:
+    def to_pt(self, xy: Tuple[float, float]) -> Tuple[int, int]:
         xy = torch.tensor([xy[0], xy[1]])
         pt = self.space.voxel_map.xy_to_grid_coords(xy)
         return tuple(pt.tolist())
 
-    def to_xy(self, pt: tuple[int, int]) -> tuple[float, float]:
+    def to_xy(self, pt: Tuple[int, int]) -> Tuple[float, float]:
         pt = torch.tensor([pt[0], pt[1]])
         xy = self.space.voxel_map.grid_coords_to_xy(pt)
         return tuple(xy.tolist())
 
-    def compute_dis(self, a: tuple[int, int], b: tuple[int, int]):
+    def compute_dis(self, a: Tuple[int, int], b: Tuple[int, int]):
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
-    def compute_obstacle_punishment(self, a: tuple[int, int], weight: int, avoid: int) -> float:
+    def compute_obstacle_punishment(self, a: Tuple[int, int], weight: int, avoid: int) -> float:
         obstacle_punishment = 0
         # it is a trick, if we compute euclidean dis between a and every obstacle,
         # this single compute_obstacle_punishment will be O(n) complexity
@@ -88,11 +88,11 @@ class AStar():
         return obstacle_punishment
 
     # A* heuristic
-    def compute_heuristic(self, a: tuple[int, int], b: tuple[int, int], weight = 12, avoid = 3) -> float:
+    def compute_heuristic(self, a: Tuple[int, int], b: Tuple[int, int], weight = 12, avoid = 3) -> float:
         return self.compute_dis(a, b) + weight * self.compute_obstacle_punishment(a, weight, avoid)\
             + self.compute_obstacle_punishment(b, weight, avoid)
 
-    def is_in_line_of_sight(self, start_pt: tuple[int, int], end_pt: tuple[int, int]) -> bool:
+    def is_in_line_of_sight(self, start_pt: Tuple[int, int], end_pt: Tuple[int, int]) -> bool:
         """Checks if there is a line-of-sight between two points.
 
         Implements using Bresenham's line algorithm.
@@ -135,7 +135,7 @@ class AStar():
             return False
         return ((c[1] - b[1]) / (c[0] - b[0])) == ((b[1] - a[1]) / (b[0] - a[0]))
 
-    def clean_path(self, path: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    def clean_path(self, path: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         """Cleans up the final path.
 
         This implements a simple algorithm where, given some current position,
@@ -164,7 +164,7 @@ class AStar():
             i = j
         return cleaned_path
 
-    def get_unoccupied_neighbor(self, pt: tuple[int, int], goal_pt = None) -> tuple[int, int]:
+    def get_unoccupied_neighbor(self, pt: Tuple[int, int], goal_pt = None) -> Tuple[int, int]:
         if not self.point_is_occupied(*pt):
             return pt
 
@@ -182,7 +182,7 @@ class AStar():
         return None
         # raise ValueError("The robot might stand on a non navigable point, so check obstacle map and restart roslaunch")
 
-    def get_reachable_points(self, start_pt: tuple[int, int]) -> set[tuple[int, int]]:
+    def get_reachable_points(self, start_pt: Tuple[int, int]) -> Set[Tuple[int, int]]:
         """Gets all reachable points from a given starting point.
 
         Args:
@@ -196,7 +196,7 @@ class AStar():
         if start_pt is None:
             return set()
 
-        reachable_points: set[tuple[int, int]] = set()
+        reachable_points: set[Tuple[int, int]] = set()
         to_visit = [start_pt]
         while to_visit:
             pt = to_visit.pop()
@@ -213,10 +213,10 @@ class AStar():
 
     def run_astar(
         self,
-        start_xy: tuple[float, float],
-        end_xy: tuple[float, float],
+        start_xy: Tuple[float, float],
+        end_xy: Tuple[float, float],
         remove_line_of_sight_points: bool = True,
-    ) -> list[tuple[float, float]]:
+    ) -> List[Tuple[float, float]]:
 
         start_pt, end_pt = self.to_pt(start_xy), self.to_pt(end_xy)
 
@@ -230,7 +230,7 @@ class AStar():
         # Implements A* search.
         q = [(0, start_pt)]
         came_from: dict = {start_pt: None}
-        cost_so_far: dict[tuple[int, int], float] = {start_pt: 0.0}
+        cost_so_far: dict[Tuple[int, int], float] = {start_pt: 0.0}
         while q:
             _, current = heapq.heappop(q)
 
