@@ -97,6 +97,7 @@ class RobotAgentManip:
                 obs_min_height=parameters["obs_min_height"],
                 obs_max_height=parameters["obs_max_height"],
                 obs_min_density = parameters["obs_min_density"],
+                exp_min_density = parameters["exp_min_density"],
                 min_depth=parameters["min_depth"],
                 max_depth=parameters["max_depth"],
                 pad_obstacles=parameters["pad_obstacles"],

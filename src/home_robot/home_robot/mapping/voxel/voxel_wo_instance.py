@@ -114,6 +114,7 @@ class SparseVoxelMapVoxel(object):
         obs_min_height: float = 0.1,
         obs_max_height: float = 1.5,
         obs_min_density: float = 50,
+        exp_min_density: float = 5,
         smooth_kernel_size: int = 2,
         add_local_radius_points: bool = True,
         remove_visited_from_obstacles: bool = False,
@@ -142,6 +143,7 @@ class SparseVoxelMapVoxel(object):
         self.obs_min_height = obs_min_height
         self.obs_max_height = obs_max_height
         self.obs_min_density = obs_min_density
+        self.exp_min_density = exp_min_density
 
         # Smoothing kernel params
         self.smooth_kernel_size = smooth_kernel_size
@@ -665,7 +667,7 @@ class SparseVoxelMapVoxel(object):
         # Add explored radius around the robot, up to min depth
         # TODO: make sure lidar is supported here as well; if we do not have lidar assume a certain radius is explored
         explored_soft += self._visited
-        explored = explored_soft > 0
+        explored = explored_soft > self.exp_min_density
 
         # Also shrink the explored area to build more confidence
         # That we will not collide with anything while moving around
