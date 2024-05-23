@@ -61,7 +61,7 @@ def main(
     output_filename,
     navigate_home: bool = False,
     show_intermediate_maps: bool = False,
-    explore_iter: int = 10,
+    explore_iter: int = -1,
     re: int = 1,
     input_path: str = None,
     **kwargs,
@@ -120,7 +120,7 @@ def main(
             demo.run_exploration(
                 rate,
                 manual_wait,
-                explore_iter=6,
+                explore_iter=parameters["exploration_steps"],
                 task_goal=object_to_find,
                 go_home_at_end=navigate_home,
                 visualize=show_intermediate_maps,

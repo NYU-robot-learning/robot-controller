@@ -31,8 +31,14 @@ def plan_to_frontier(
     tries = 0
     failed = False
     res = None
-    start_is_valid = space.is_valid(start)
+    # start_is_valid = space.is_valid(start)
+    start_is_valid = space.voxel_map.xyt_is_safe(start)
     print("\n----------- Planning to frontier -----------")
+    if not start_is_valid:
+        if hasattr(planner, 'get_unoccupied_neighbor'):
+            if hasattr(self.planner, 'reset'):
+                self.planner.reset()
+            start_is_valid = self.planner.get_unoccupied_neighbor(pt) is not None
     print("Starting at:", start)
     print("Start is valid:", start_is_valid)
     if not start_is_valid:

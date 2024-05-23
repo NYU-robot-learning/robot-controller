@@ -877,7 +877,7 @@ class SparseVoxelMapVoxel(object):
             # Conversion failed - probably out of bounds
             return False
         navigable = ~obstacles & explored
-        return navigable[grid_xy[0], grid_xy[1]]
+        return bool(navigable[grid_xy[0], grid_xy[1]])
         # if robot is not None:
         #     # TODO: check against robot geometry
         #     raise NotImplementedError(

@@ -288,10 +288,16 @@ class RobotAgentManip:
             self.look_around()
             self.robot.move_to_nav_posture()
             start = self.robot.get_base_pose()
-            start_is_valid = self.space.is_valid(start, verbose=True)
+            if hasattr(self.planner, 'get_unoccupied_neighbor'):
+                if hasattr(self.planner, 'reset'):
+                    self.planner.reset()
+                pt = self.space.voxel_map.xy_to_grid_coords(start[:2])
+                start_is_safe = self.planner.get_unoccupied_neighbor(pt) is not None
+            else:
+                start_is_safe = self.voxel_map.xyt_is_safe(start)
             # if start is not valid move backwards a bit
-            if not start_is_valid:
-                print("Start not valid. back up a bit.")
+            if not start_is_safe:
+                print("Start not safe. back up a bit.")
 
                 # TODO: debug here -- why start is not valid?
                 self.update()
