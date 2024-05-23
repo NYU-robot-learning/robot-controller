@@ -115,7 +115,8 @@ def main(
 
     
     while True:
-        mode = input('select mode? E/N/S')
+        # mode = input('select mode? E/N/S')
+        mode = 'N'
         if mode == 'S':
             break
         if mode == 'E':
@@ -141,20 +142,22 @@ def main(
                 demo.voxel_map.write_to_pickle(demo.log_dir + '/' + output_pkl_filename)
         else:
             robot.switch_to_navigation_mode()
-            text = input('Enter object name: ')
-            point = demo.image_sender.query_text(text)
-            if not demo.navigate(point):
-                continue
-            cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
-            robot.switch_to_navigation_mode()
-            xyt = robot.nav.get_base_pose()
-            xyt[2] = xyt[2] + np.pi / 2
-            robot.nav.navigate_to(xyt)
+            # text = input('Enter object name: ')
+            text = "red cup"
+            # point = demo.image_sender.query_text(text)
+            # if not demo.navigate(point):
+            #     continue
+            # cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            # robot.switch_to_navigation_mode()
+            # xyt = robot.nav.get_base_pose()
+            # xyt[2] = xyt[2] + np.pi / 2
+            # robot.nav.navigate_to(xyt)
 
-            if input('You want to run manipulation: y/n') == 'n':
-                continue
-            camera_xyz = robot.head.get_pose()[:3, 3]
-            theta = compute_tilt(camera_xyz, point)
+            # if input('You want to run manipulation: y/n') == 'n':
+            #     continue
+            # camera_xyz = robot.head.get_pose()[:3, 3]
+            # theta = compute_tilt(camera_xyz, point)
+            theta = -0.6
             demo.manipulate(text, theta)
             
             robot.switch_to_navigation_mode()

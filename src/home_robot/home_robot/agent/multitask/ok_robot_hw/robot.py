@@ -1,5 +1,6 @@
 import numpy as np
 # import PyKDL
+import pinocchio as pin
 import sys
 import os
 
@@ -43,7 +44,7 @@ class HelloRobot:
         # Initialize StretchClient controller (from home_robot/src/home_robot_hw/home_robot_hw/remote/api.py)
         # self.robot = StretchClient(urdf_path = stretch_client_urdf_file)
         self.robot = robot
-        self.robot.switch_to_manipulation_mode()
+        # self.robot.switch_to_manipulation_mode()
         time.sleep(2)
 
         # Constraining the robots movement
@@ -276,7 +277,12 @@ class HelloRobot:
         
         # This allows to transform a point in frame1 to frame2
         frame_transform = frame2.Inverse() * frame1
+        # print(f"frame_transform {frame_transform}")
+        # frame_transform1 = self.robot._ros_client.get_frame_pose(node2, node1)
+        # print(f"frame_transform1 {frame_transform1}")
 
+        # frame_transform2 = self.robot._ros_client.get_frame_pose(node1, node2)
+        # print(f"frame_transform2 {frame_transform2}")
         return frame_transform, frame2, frame1
     
     def move_to_pose(self, translation_tensor, rotational_tensor, gripper, move_mode=0, velocities=None):
@@ -295,6 +301,16 @@ class HelloRobot:
         curr_pose = PyKDL.Frame() # Current pose of gripper in base frame
         del_pose = PyKDL.Frame() # Relative Movement of gripper 
         self.fk_p_kdl.JntToCart(self.joint_array, curr_pose)
+        print(f"cur pose {curr_pose}")
+        # q, _, _ = self.robot._ros_client.get_joint_state()
+        # pin_pose1 = self.robot._robot_model.manip_fk(q)
+        # pin_pose2 = self.robot._robot_model.fk(q)
+
+        # pin_pose = self.robot.manip.get_ee_pose(matrix=True)
+        # pin_rotation, pin_translation = pin_pose[:3, :3], pin_pose[:3, 3]
+        # pin_curr_pose = pin.SE3(pin_rotation, pin_translation)
+        # print(f"pin curr pose {pin_curr_pose}")
+
         rot_matrix = R.from_euler('xyz', rotation, degrees=False).as_matrix()
         del_rot = PyKDL.Rotation(PyKDL.Vector(rot_matrix[0][0], rot_matrix[1][0], rot_matrix[2][0]),
                                   PyKDL.Vector(rot_matrix[0][1], rot_matrix[1][1], rot_matrix[2][1]),
@@ -304,9 +320,33 @@ class HelloRobot:
         del_pose.p = del_trans
         goal_pose_new = curr_pose*del_pose # Final pose of gripper in base frame
 
+        # pin_del_pose = pin.SE3(np.array(rot_matrix), np.array(translation))
+        # pin_goal_pose_new = pin_curr_pose * pin_del_pose
+        # print(f"del_pose {del_pose}")
+        # print(f"pin del psoe {pin_del_pose}")
+        # print(f"goal pose new {goal_pose_new}")
+        # print(f"pin goal pose new {pin_goal_pose_new}")
+
+        # final_pos = pin_goal_pose_new.translation.tolist()
+        # final_quat = pin.Quaternion(pin_goal_pose_new.rotation).coeffs().tolist()
+        # print(f"final pos and quat {final_pos}\n {final_quat}")
+        # self.robot.manip.goto_ee_pose(final_pos, final_quat)
+
+        # full_body_cfg = self.robot.manip.solve_ik(
+        #     final_pos, final_quat, False, False, None, False
+        # )
+        # if full_body_cfg is None:
+        #     print("Warning: Cannot find an IK solution for desired EE pose!")
+        #     return False
+
+        # pin_joint_pos = self.robot.manip._extract_joint_pos(full_body_cfg)
+        
+
         # Ik to calculate the required joint movements to move the gripper to desired pose
         seed_array = PyKDL.JntArray(self.arm_chain.getNrOfJoints())
         self.ik_p_kdl.CartToJnt(seed_array, goal_pose_new, self.joint_array) 
+        print(f"joint array {self.joint_array}")
+        # print(f"pin joint pos {pin_joint_pos}")
 
         ik_joints = {}
         for joint_index in range(self.joint_array.rows()):
