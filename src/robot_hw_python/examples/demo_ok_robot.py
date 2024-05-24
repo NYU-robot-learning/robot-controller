@@ -3,13 +3,16 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 import datetime
+import os
 import sys
+import threading
 import time
 import timeit
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import open3d
@@ -18,26 +21,23 @@ import torch
 from PIL import Image
 
 # Mapping and perception
-from home_robot.agent.multitask import get_parameters
 from home_robot.agent.multitask import RobotAgentManip as RobotAgent
+from home_robot.agent.multitask import get_parameters
 
 # Chat and UI tools
 from home_robot.utils.point_cloud import numpy_to_pcd, show_point_cloud
 from robot_hw_python.remote import StretchClient
 
-import cv2
-import threading
-
-import os
 
 def compute_tilt(camera_xyz, target_xyz):
-    '''
-        a util function for computing robot head tilts so the robot can look at the target object after navigation
-        - camera_xyz: estimated (x, y, z) coordinates of camera
-        - target_xyz: estimated (x, y, z) coordinates of the target object
-    '''
+    """
+    a util function for computing robot head tilts so the robot can look at the target object after navigation
+    - camera_xyz: estimated (x, y, z) coordinates of camera
+    - target_xyz: estimated (x, y, z) coordinates of the target object
+    """
     vector = camera_xyz - target_xyz
     return -np.arctan2(vector[2], np.linalg.norm(vector[:2]))
+
 
 @click.command()
 @click.option("--rate", default=5, type=int)
@@ -94,14 +94,12 @@ def main(
     robot.move_to_nav_posture()
 
     print("- Start robot agent with data collection")
-    demo = RobotAgent(
-        robot, parameters, re = re, log_dir = 'debug' + '_' + formatted_datetime
-    )
+    demo = RobotAgent(robot, parameters, re=re, log_dir="debug" + "_" + formatted_datetime)
 
     if input_path:
-        print('start reading from old pickle file')
-        demo.voxel_map.read_from_pickle(filename = input_path)
-        print('finish reading from old pickle file')
+        print("start reading from old pickle file")
+        demo.voxel_map.read_from_pickle(filename=input_path)
+        print("finish reading from old pickle file")
 
     def send_image():
         while True:
@@ -113,12 +111,11 @@ def main(
     img_thread.daemon = True
     img_thread.start()
 
-    
     while True:
-        mode = input('select mode? E/N/S')
-        if mode == 'S':
+        mode = input("select mode? E/N/S")
+        if mode == "S":
             break
-        if mode == 'E':
+        if mode == "E":
             robot.switch_to_navigation_mode()
             demo.run_exploration(
                 rate,
@@ -131,46 +128,47 @@ def main(
             if not os.path.exists(demo.log_dir):
                 os.mkdir(demo.log_dir)
             pc_xyz, pc_rgb = demo.voxel_map.get_xyz_rgb()
-            torch.save(demo.voxel_map.voxel_pcd, demo.log_dir + '/memory.pt')
+            torch.save(demo.voxel_map.voxel_pcd, demo.log_dir + "/memory.pt")
             if len(output_pcd_filename) > 0:
                 print(f"Write pcd to {output_pcd_filename}...")
                 pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
-                open3d.io.write_point_cloud(demo.log_dir + '/' + output_pcd_filename, pcd)
+                open3d.io.write_point_cloud(demo.log_dir + "/" + output_pcd_filename, pcd)
             if len(output_pkl_filename) > 0:
                 print(f"Write pkl to {output_pkl_filename}...")
-                demo.voxel_map.write_to_pickle(demo.log_dir + '/' + output_pkl_filename)
+                demo.voxel_map.write_to_pickle(demo.log_dir + "/" + output_pkl_filename)
         else:
             robot.switch_to_navigation_mode()
-            text = input('Enter object name: ')
+            text = input("Enter object name: ")
+            # point = demo.image_sender.query_text(text)
+            # if not demo.navigate(point):
+            #     continue
+            # cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            # robot.switch_to_navigation_mode()
+            # xyt = robot.nav.get_base_pose()
+            # xyt[2] = xyt[2] + np.pi / 2
+            # robot.nav.navigate_to(xyt)
+
+            if input("You want to run manipulation: y/n") == "n":
+                continue
+            # camera_xyz = robot.head.get_pose()[:3, 3]
+            # theta = compute_tilt(camera_xyz, point)
+            theta = -0.6
+            demo.manipulate(text, theta)
+
+            robot.switch_to_navigation_mode()
+            if input("You want to run placing: y/n") == "n":
+                continue
+            text = input("Enter receptacle name: ")
             point = demo.image_sender.query_text(text)
             if not demo.navigate(point):
                 continue
-            cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            cv2.imwrite(text + ".jpg", demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
             robot.switch_to_navigation_mode()
             xyt = robot.nav.get_base_pose()
             xyt[2] = xyt[2] + np.pi / 2
             robot.nav.navigate_to(xyt)
 
-            if input('You want to run manipulation: y/n') == 'n':
-                continue
-            camera_xyz = robot.head.get_pose()[:3, 3]
-            theta = compute_tilt(camera_xyz, point)
-            demo.manipulate(text, theta)
-            
-            robot.switch_to_navigation_mode()
-            if input('You want to run placing: y/n') == 'n':
-                continue
-            text = input('Enter receptacle name: ')
-            point = demo.image_sender.query_text(text)
-            if not demo.navigate(point):
-                continue
-            cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
-            robot.switch_to_navigation_mode()
-            xyt = robot.nav.get_base_pose()
-            xyt[2] = xyt[2] + np.pi / 2
-            robot.nav.navigate_to(xyt)
-        
-            if input('You want to run placing: y/n') == 'n':
+            if input("You want to run placing: y/n") == "n":
                 continue
             camera_xyz = robot.head.get_pose()[:3, 3]
             theta = compute_tilt(camera_xyz, point)
