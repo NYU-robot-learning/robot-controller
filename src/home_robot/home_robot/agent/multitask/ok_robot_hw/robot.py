@@ -11,7 +11,7 @@ import time
 import random
 import os
 
-from home_robot.agent.multitask.ok_robot_hw.utils import kdl_tree_from_urdf_model
+from home_robot.agent.multitask.ok_robot_hw.utils import kdl_tree_from_urdf_model, transform_joint_array
 from home_robot.agent.multitask.ok_robot_hw.global_parameters import *
 
 
@@ -44,7 +44,7 @@ class HelloRobot:
         # Initialize StretchClient controller (from home_robot/src/home_robot_hw/home_robot_hw/remote/api.py)
         # self.robot = StretchClient(urdf_path = stretch_client_urdf_file)
         self.robot = robot
-        # self.robot.switch_to_manipulation_mode()
+        self.robot.switch_to_manipulation_mode()
         time.sleep(2)
 
         # Constraining the robots movement
@@ -281,9 +281,12 @@ class HelloRobot:
         # frame_transform1 = self.robot._ros_client.get_frame_pose(node2, node1)
         # print(f"frame_transform1 {frame_transform1}")
 
-        # frame_transform2 = self.robot._ros_client.get_frame_pose(node1, node2)
+        frame_transform2 = self.robot._ros_client.get_frame_pose(node1, node2)
+        rot_mat = frame_transform2[:3, :3]
+        trans_mat = frame_transform2[:3, 3]
+        pin_frame_transform = pin.SE3(np.array(rot_mat), np.array(trans_mat))
         # print(f"frame_transform2 {frame_transform2}")
-        return frame_transform, frame2, frame1
+        return frame_transform, pin_frame_transform, frame2, frame1
     
     def move_to_pose(self, translation_tensor, rotational_tensor, gripper, move_mode=0, velocities=None):
         """
@@ -301,14 +304,14 @@ class HelloRobot:
         curr_pose = PyKDL.Frame() # Current pose of gripper in base frame
         del_pose = PyKDL.Frame() # Relative Movement of gripper 
         self.fk_p_kdl.JntToCart(self.joint_array, curr_pose)
-        print(f"cur pose {curr_pose}")
+        # print(f"cur pose {curr_pose}")
         # q, _, _ = self.robot._ros_client.get_joint_state()
         # pin_pose1 = self.robot._robot_model.manip_fk(q)
         # pin_pose2 = self.robot._robot_model.fk(q)
 
-        # pin_pose = self.robot.manip.get_ee_pose(matrix=True)
-        # pin_rotation, pin_translation = pin_pose[:3, :3], pin_pose[:3, 3]
-        # pin_curr_pose = pin.SE3(pin_rotation, pin_translation)
+        pin_pose = self.robot.manip.get_ee_pose(matrix=True)
+        pin_rotation, pin_translation = pin_pose[:3, :3], pin_pose[:3, 3]
+        pin_curr_pose = pin.SE3(pin_rotation, pin_translation)
         # print(f"pin curr pose {pin_curr_pose}")
 
         rot_matrix = R.from_euler('xyz', rotation, degrees=False).as_matrix()
@@ -320,42 +323,47 @@ class HelloRobot:
         del_pose.p = del_trans
         goal_pose_new = curr_pose*del_pose # Final pose of gripper in base frame
 
-        # pin_del_pose = pin.SE3(np.array(rot_matrix), np.array(translation))
-        # pin_goal_pose_new = pin_curr_pose * pin_del_pose
+        pin_del_pose = pin.SE3(np.array(rot_matrix), np.array(translation))
+        pin_goal_pose_new = pin_curr_pose * pin_del_pose
         # print(f"del_pose {del_pose}")
         # print(f"pin del psoe {pin_del_pose}")
         # print(f"goal pose new {goal_pose_new}")
         # print(f"pin goal pose new {pin_goal_pose_new}")
 
-        # final_pos = pin_goal_pose_new.translation.tolist()
-        # final_quat = pin.Quaternion(pin_goal_pose_new.rotation).coeffs().tolist()
+        final_pos = pin_goal_pose_new.translation.tolist()
+        final_quat = pin.Quaternion(pin_goal_pose_new.rotation).coeffs().tolist()
         # print(f"final pos and quat {final_pos}\n {final_quat}")
         # self.robot.manip.goto_ee_pose(final_pos, final_quat)
 
-        # full_body_cfg = self.robot.manip.solve_ik(
-        #     final_pos, final_quat, False, False, None, False
-        # )
-        # if full_body_cfg is None:
-        #     print("Warning: Cannot find an IK solution for desired EE pose!")
-        #     return False
+        full_body_cfg = self.robot.manip.solve_ik(
+            final_pos, final_quat, False, False, None, False
+        )
+        if full_body_cfg is None:
+            print("Warning: Cannot find an IK solution for desired EE pose!")
+            return False
 
-        # pin_joint_pos = self.robot.manip._extract_joint_pos(full_body_cfg)
-        
+        pin_joint_pos = self.robot.manip._extract_joint_pos(full_body_cfg)
+        transform_joint_pos = transform_joint_array(pin_joint_pos)
 
         # Ik to calculate the required joint movements to move the gripper to desired pose
         seed_array = PyKDL.JntArray(self.arm_chain.getNrOfJoints())
         self.ik_p_kdl.CartToJnt(seed_array, goal_pose_new, self.joint_array) 
+
+        self.joint_array1 = transform_joint_pos
         print(f"joint array {self.joint_array}")
-        # print(f"pin joint pos {pin_joint_pos}")
+        print(f"pin joint pos {pin_joint_pos}")
+        print(f"transformed joint pos {transform_joint_pos}")
 
         ik_joints = {}
-        for joint_index in range(self.joint_array.rows()):
-            ik_joints[self.joint_list[joint_index]] = self.joint_array[joint_index]
+        # for joint_index in range(self.joint_array.rows()):
+        for joint_index in range(len(self.joint_array1)):
+            ik_joints[self.joint_list[joint_index]] = self.joint_array1[joint_index]
 
         # Actual Movement of joints
         self.move_to_joints(ik_joints, gripper, move_mode, velocities)
 
         # Update joint_values
         self.updateJoints()
-        for joint_index in range(self.joint_array.rows()):
+        # for joint_index in range(self.joint_array.rows()):
+        for joint_index in range(len(self.joint_array1)):
             self.joint_array[joint_index] = self.joints[self.joint_list[joint_index]]
