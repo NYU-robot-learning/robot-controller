@@ -9,7 +9,8 @@ voxel_size: 0.1
 # 0.05 seems too low
 obs_min_height: 0.1  # Ignore things less than this high when planning motions
 obs_max_height: 1.5  # Ignore things over this height (eg ceilings)
-obs_min_density: 100  # This many points makes it an obstacle
+obs_min_density: 50  # This many points makes it an obstacle
+exp_min_density: 5
 
 # Padding
 pad_obstacles: 2  # Add this many units (voxel_size) to the area around obstacles
@@ -45,7 +46,7 @@ step_size: 0.1
 rotation_step_size: 0.2 
 dilate_frontier_size: 2  # Used to shrink the frontier back from the edges of the world
 dilate_obstacle_size: 0  # Used when selecting goals and computing what the "frontier" is 
-default_expand_frontier_size: 10  # margin along the frontier where final robot position can be
+default_expand_frontier_size: 5  # margin along the frontier where final robot position can be
 motion_planner:
         simplify_plans: False
         shortcut_plans: True
