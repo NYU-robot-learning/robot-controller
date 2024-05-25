@@ -123,7 +123,7 @@ def main(
             demo.run_exploration(
                 rate,
                 manual_wait,
-                explore_iter=6,
+                explore_iter=4,
                 task_goal=object_to_find,
                 go_home_at_end=navigate_home,
                 visualize=show_intermediate_maps,
