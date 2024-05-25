@@ -56,6 +56,7 @@ class AStar():
         obs, exp = self.space.voxel_map.get_2d_map()
         print('up to date navigable map loaded')
         self._navigable = ~obs & exp
+        self.start_time = time.time()
 
     def point_is_occupied(self, x: int, y: int) -> bool:
         return not bool(self._navigable[x][y])
@@ -224,6 +225,7 @@ class AStar():
         # start_pt = self.get_unoccupied_neighbor(start_pt, end_pt)
         start_pt = self.get_unoccupied_neighbor(start_pt)
         end_pt = self.get_unoccupied_neighbor(end_pt, start_pt)
+        print('A* formally starts ', time.time() - self.start_time, ' seconds after path planning starts')
         if start_pt is None or end_pt is None:
             return None
 
@@ -284,7 +286,9 @@ class AStar():
                 print("[Planner] invalid goal")
             return PlanResult(False, reason = "[Planner] invalid goal")
         # Add start to the tree
+        print('Start running A* ', time.time() - self.start_time, ' seconds after path planning starts')
         waypoints = self.run_astar(start[:2], goal[:2]) 
+        print('Finish running A* ', time.time() - self.start_time, ' seconds after path planning starts')
 
         if waypoints is None:
             if verbose:
@@ -295,4 +299,5 @@ class AStar():
             theta = compute_theta(waypoints[i][0], waypoints[i][1], waypoints[i + 1][0], waypoints[i + 1][1])
             trajectory.append(Node([waypoints[i][0], waypoints[i][1], float(theta)]))
         trajectory.append(Node([waypoints[-1][0], waypoints[-1][1], goal[-1]]))
+        print('Finish computing theta ', time.time() - self.start_time, ' seconds after path planning starts')
         return PlanResult(True, trajectory = trajectory)
