@@ -197,6 +197,7 @@ class ImageProcessor:
     def _recv_image(self):
         while True:
             data = recv_array(self.img_socket)
+            print('Image received')
             start_time = time.time()
             self.process_rgbd_images(data)
             process_time = time.time() - start_time
@@ -464,8 +465,8 @@ class ImageProcessor:
             self.run_mask_clip(rgb, ~valid_depth, world_xyz)
 
 if __name__ == "__main__":
-    # imageProcessor = ImageProcessor(pcd_path = 'memory.pt')
-    imageProcessor = ImageProcessor(pcd_path = 'debug_2024-05-15_14-18-22/memory.pt', navigation_only = True)   
+    imageProcessor = ImageProcessor(pcd_path = None)
+    # imageProcessor = ImageProcessor(pcd_path = 'debug_2024-05-15_14-18-22/memory.pt', navigation_only = True)   
     try:  
         while True:
             imageProcessor.recv_text()
