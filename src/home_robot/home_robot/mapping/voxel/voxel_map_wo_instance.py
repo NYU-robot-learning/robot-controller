@@ -339,7 +339,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         # print(torch.where(explored & ~obstacles))
         # print(torch.where(expanded_mask))
 
-        if True:
+        if debug:
             import matplotlib.pyplot as plt
 
             plt.imshow(
@@ -351,7 +351,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
             import datetime
             current_datetime = datetime.datetime.now()
             formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
-            plt.savefig('debug_' + formatted_datetime + '.png')
+            # plt.savefig('debug_' + formatted_datetime + '.png')
 
 
         # Where can the robot go?
@@ -556,7 +556,6 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         distances = frontier_map.compressed()
         xs, ys = np.where(~frontier_map.mask)
 
-        # debug = True
         if debug:
             plt.subplot(121)
             plt.imshow(distance_map, interpolation="nearest")
