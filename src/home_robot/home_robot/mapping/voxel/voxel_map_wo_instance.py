@@ -348,9 +348,9 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
                 + explored.int()
                 + obstacles.int() * 5
             )
-            import datetime
-            current_datetime = datetime.datetime.now()
-            formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
+            # import datetime
+            # current_datetime = datetime.datetime.now()
+            # formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
             # plt.savefig('debug_' + formatted_datetime + '.png')
 
 
@@ -479,7 +479,6 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         outside_frontier = expanded_frontier & ~explored
         frontier = expanded_frontier & ~obstacles & explored
 
-        debug = True
         if debug:
             import matplotlib.pyplot as plt
 
@@ -556,17 +555,17 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         distances = frontier_map.compressed()
         xs, ys = np.where(~frontier_map.mask)
 
-        if debug:
-            plt.subplot(121)
-            plt.imshow(distance_map, interpolation="nearest")
-            plt.title("Distance to start")
-            plt.axis("off")
+        # if debug:
+        #     plt.subplot(121)
+        #     plt.imshow(distance_map, interpolation="nearest")
+        #     plt.title("Distance to start")
+        #     plt.axis("off")
 
-            plt.subplot(122)
-            plt.imshow(frontier_map, interpolation="nearest")
-            plt.title("Distance to start (edges only)")
-            plt.axis("off")
-            # plt.savefig('debug_map.png')
+        #     plt.subplot(122)
+        #     plt.imshow(frontier_map, interpolation="nearest")
+        #     plt.title("Distance to start (edges only)")
+        #     plt.axis("off")
+        #     plt.show()
 
         if verbose or debug:
             print(f"-> found {len(distances)} items")

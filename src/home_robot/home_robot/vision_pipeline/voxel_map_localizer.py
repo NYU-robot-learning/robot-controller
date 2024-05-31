@@ -12,6 +12,45 @@ from torch import Tensor
 
 from transformers import AutoProcessor, AutoModel
 
+from sklearn.cluster import DBSCAN
+
+def find_clusters(vertices: np.ndarray, similarity: np.ndarray):
+    # Calculate the number of top values directly
+    top_positions = vertices
+    # top_values = probability_over_all_points[top_indices].flatten()
+
+    # Apply DBSCAN clustering
+    dbscan = DBSCAN(eps=0.1, min_samples=5)
+    clusters = dbscan.fit(top_positions)
+    labels = clusters.labels_
+
+    # Initialize empty lists to store centroids and extends of each cluster
+    centroids = []
+    extends = []
+    similarity_max_list = []
+    points = []
+
+    for cluster_id in set(labels):
+        if cluster_id == -1:  # Ignore noise
+            continue
+
+        members = top_positions[labels == cluster_id]
+        similarity_values = similarity[labels == cluster_id]
+        simiarity_max = np.max(similarity_values)
+        centroid = np.mean(members, axis=0)
+
+        sx = np.max(members[:, 0]) - np.min(members[:, 0])
+        sy = np.max(members[:, 1]) - np.min(members[:, 1])
+        sz = np.max(members[:, 2]) - np.min(members[:, 2])
+
+        # Append centroid and extends to the lists
+        centroids.append(centroid)
+        extends.append((sx, sy, sz))
+        similarity_max_list.append(simiarity_max)
+        points.append(members)
+
+    return centroids, extends, similarity_max_list, points
+
 class VoxelMapLocalizer():
     def __init__(self, model_config = 'ViT-B/16', device = 'cuda', siglip = True):
         self.device = device
@@ -87,3 +126,13 @@ class VoxelMapLocalizer():
         points, features, _, _ = self.voxel_pcd.get_pointcloud()
         alignments = self.find_alignment_over_model(A).cpu()
         return points[alignments.argmax(dim = -1)].detach().cpu()
+
+    def find_clusters_for_A(self, A):
+        points, features, _, _ = self.voxel_pcd.get_pointcloud()
+        alignments = self.find_alignment_over_model(A).cpu().reshape(-1).detach().numpy()
+        turning_point = np.percentile(alignments, 99)
+        mask = alignments > turning_point
+        alignments = alignments[mask]
+        points = points[mask]
+        centroids, extends, similarity_max_list, points = find_clusters(points.detach().cpu().numpy(), alignments)
+        return centroids, extends, similarity_max_list, points

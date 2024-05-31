@@ -698,7 +698,6 @@ class SparseVoxelMapVoxel(object):
             #     self.smooth_kernel,
             # )[0, 0].bool()
 
-        debug = True
         if debug:
             import matplotlib.pyplot as plt
 
@@ -725,7 +724,7 @@ class SparseVoxelMapVoxel(object):
             plt.imshow(explored.detach().cpu().numpy())
             plt.axis("off")
             plt.title("explored")
-            # plt.show()
+            plt.show()
 
         # Update cache
         self._map2d = (obstacles, explored)

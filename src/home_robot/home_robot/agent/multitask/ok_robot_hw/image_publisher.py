@@ -2,7 +2,6 @@ import zmq
 import numpy as np
 from PIL import Image as PILImage
 
-from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray,MultiArrayDimension
 
