@@ -220,12 +220,12 @@ class HelloRobot:
             target1 = [0 for _ in range(6)]
             target1[1] = target_state[1] - state[1]
             self.robot.manip.goto_joint_positions(target1, relative=True)
-            time.sleep(0.7)
+            time.sleep(1)
 
         print(f"current state {state}")
         print(f"target state {target_state}")
         self.robot.manip.goto_joint_positions(target_state)
-        time.sleep(0.7)
+        time.sleep(1)
 
         #NOTE: below code is to fix the pitch drift issue in current hello-robot. Remove it if there is no pitch drift issue
         OVERRIDE_STATES['wrist_pitch'] = joints['joint_wrist_pitch']

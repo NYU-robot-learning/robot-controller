@@ -50,7 +50,6 @@ class RemoteRobotAgentManip:
         self,
         robot: RobotClient,
         parameters: Dict[str, Any],
-        voxel_map: Optional[SparseVoxelMap] = None,
         manip_port: int = 5557,
         re: int = 1,
         log_dir: str = 'debug'
@@ -84,67 +83,7 @@ class RemoteRobotAgentManip:
         )
 
         self.image_sender = ImageSender()
-
-        # Expanding frontier - how close to frontier are we allowed to go?
-        self.default_expand_frontier_size = parameters["default_expand_frontier_size"]
-
-        if voxel_map is not None:
-            self.voxel_map = voxel_map
-        else:
-            self.voxel_map = SparseVoxelMap(
-                resolution=parameters["voxel_size"],
-                local_radius=parameters["local_radius"],
-                obs_min_height=parameters["obs_min_height"],
-                obs_max_height=parameters["obs_max_height"],
-                obs_min_density = parameters["obs_min_density"],
-                exp_min_density = parameters["exp_min_density"],
-                min_depth=parameters["min_depth"],
-                max_depth=parameters["max_depth"],
-                pad_obstacles=parameters["pad_obstacles"],
-                add_local_radius_points=parameters.get(
-                    "add_local_radius_points", default=True
-                ),
-                remove_visited_from_obstacles=parameters.get(
-                    "remove_visited_from_obstacles", default=False
-                ),
-                smooth_kernel_size=parameters.get("filters/smooth_kernel_size", -1),
-                use_median_filter=parameters.get("filters/use_median_filter", False),
-                median_filter_size=parameters.get("filters/median_filter_size", 5),
-                median_filter_max_error=parameters.get(
-                    "filters/median_filter_max_error", 0.01
-                ),
-                use_derivative_filter=parameters.get(
-                    "filters/use_derivative_filter", False
-                ),
-                derivative_filter_threshold=parameters.get(
-                    "filters/derivative_filter_threshold", 0.5
-                )
-            )
-
-        # Create planning space
-        self.space = SparseVoxelMapNavigationSpace(
-            self.voxel_map,
-            self.robot.get_robot_model(),
-            step_size=parameters["step_size"],
-            rotation_step_size=parameters["rotation_step_size"],
-            dilate_frontier_size=parameters[
-                "dilate_frontier_size"
-            ],  # 0.6 meters back from every edge = 12 * 0.02 = 0.24
-            dilate_obstacle_size=parameters["dilate_obstacle_size"],
-        )
-
-        # Create a simple motion planner
-        self.planner = AStar(self.space)
-        # self.planner = RRTConnect(self.space, self.space.is_valid)
-        # if parameters["motion_planner"]["shortcut_plans"]:
-        #     self.planner = Shortcut(
-        #         self.planner, parameters["motion_planner"]["shortcut_iter"]
-        #     )
-        # if parameters["motion_planner"]["simplify_plans"]:
-        #     self.planner = SimplifyXYT(
-        #         self.planner, min_step=0.05, max_step=1.0, num_steps=8
-        #     )
-
+        
         timestamp = f"{datetime.datetime.now():%Y-%m-%d-%H-%M-%S}"
 
     def get_navigation_space(self) -> ConfigurationSpace:
@@ -159,8 +98,7 @@ class RemoteRobotAgentManip:
                 self.robot.head.set_pan_tilt(pan, tilt)
                 time.sleep(0.5)
                 # We need differen tilts to help the performance of semantic memory, but we don't want to waste time adding it to obstalce map
-                if tilt == -0.5:
-                    self.update()
+                self.update()
 
             if visualize:
                 self.voxel_map.show(
@@ -179,7 +117,6 @@ class RemoteRobotAgentManip:
 
     def run_exploration(
         self,
-        rate: int = 10,
         manual_wait: bool = False,
         explore_iter: int = 3,
         try_to_plan_iter: int = 10,
@@ -198,24 +135,6 @@ class RemoteRobotAgentManip:
             self.look_around()
             self.robot.move_to_nav_posture()
             start = self.robot.get_base_pose()
-            if hasattr(self.planner, 'get_unoccupied_neighbor'):
-                if hasattr(self.planner, 'reset'):
-                    self.planner.reset()
-                pt = self.space.voxel_map.xy_to_grid_coords(start[:2])
-                start_is_safe = self.planner.get_unoccupied_neighbor(pt) is not None
-            else:
-                start_is_safe = self.voxel_map.xyt_is_safe(start)
-            # if start is not valid move backwards a bit
-            if not start_is_safe:
-                print("Start not safe. back up a bit.")
-
-                # TODO: debug here -- why start is not valid?
-                self.update()
-                # self.save_svm("", filename=f"debug_svm_{i:03d}.pkl")
-                print(f"robot base pose: {self.robot.get_base_pose()}")
-
-                self.robot.navigate_to([-0.1, 0, 0], relative=True)
-                continue
 
             print("       Start:", start)
             res = self.image_sender.query_text('', start)
@@ -262,16 +181,16 @@ class RemoteRobotAgentManip:
         start = self.robot.get_base_pose()
         trajectory = self.image_sender.query_text(text, start)
         
-        if len(trajector) > 0:
+        if len(trajectory) > 0:
             self.robot.execute_trajectory(
-                [pt.state for pt in res.trajectory],
+                trajectory[:-1],
                 pos_err_threshold=self.pos_err_threshold,
                 rot_err_threshold=self.rot_err_threshold,
             )
-            return True
+            return trajectory[-1]
         else:
             print('Navigation Failure!')
-            return False
+            return None
         # self.look_ahead()
 
     def place(self, text, init_tilt = INIT_HEAD_TILT, base_node = TOP_CAMERA_NODE):
@@ -312,22 +231,22 @@ class RemoteRobotAgentManip:
 
         # Placing the object
         move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
+        time.sleep(1)
         self.manip_wrapper.move_to_position(gripper_pos=1)
 
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
         self.manip_wrapper.move_to_position(lift_pos = self.manip_wrapper.robot.manip.get_joint_positions()[1] + 0.3)
         self.manip_wrapper.move_to_position(wrist_roll = 3)
-        time.sleep(1)
+        time.sleep(2)
         self.manip_wrapper.move_to_position(wrist_roll = -3)
+        time.sleep(2)
 
         # Wait for some time and shrink the arm back
-        time.sleep(4)
         self.manip_wrapper.move_to_position(gripper_pos=1, 
                                 lift_pos = 1.05,
                                 arm_pos = 0)
-        time.sleep(4)
+        time.sleep(3)
         self.manip_wrapper.move_to_position(wrist_pitch=-1.57)
-        time.sleep(1)
 
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])
