@@ -143,9 +143,7 @@ class HelloRobot:
             target_head_tilt = head_tilt
         if not head_pan is None:
             target_head_pan = head_pan
-        print('Mode before moving head:', self.robot._ros_client._current_mode)
         self.robot.head.set_pan_tilt(tilt = target_head_tilt, pan = target_head_pan)
-        print('Mode after moving head:', self.robot._ros_client._current_mode)
         time.sleep(0.7)
 
     def pickup(self, depth):
@@ -153,17 +151,19 @@ class HelloRobot:
             Code for grasping the object
             Gripper closes gradually until it encounters resistence
         """
-        next_gripper_pos = 0.25
+        next_gripper_pos = 1
         while True:
-            self.robot.manip.move_gripper(next_gripper_pos)
+            self.robot.manip.move_gripper(next_gripper_pos * self.STRETCH_GRIPPER_MAX)
             curr_gripper_pose = self.robot.manip.get_gripper_position()
-            if next_gripper_pos == -0.2 or (curr_gripper_pose > next_gripper_pos + 0.01):
+            # print('Robot means to move gripper to', next_gripper_pos * self.STRETCH_GRIPPER_MAX)
+            # print('Robot actually moves gripper to', curr_gripper_pose)
+            if next_gripper_pos == -1 or (curr_gripper_pose > next_gripper_pos * self.STRETCH_GRIPPER_MAX + 0.015):
                 break
             
             if next_gripper_pos > 0:
-                next_gripper_pos -= 0.05
+                next_gripper_pos -= 0.25
             else: 
-                next_gripper_pos = -0.2
+                next_gripper_pos = -1
 
     def updateJoints(self):
         """
@@ -222,8 +222,8 @@ class HelloRobot:
             self.robot.manip.goto_joint_positions(target1, relative=True)
             time.sleep(1)
 
-        print(f"current state {state}")
-        print(f"target state {target_state}")
+        # print(f"current state {state}")
+        # print(f"target state {target_state}")
         self.robot.manip.goto_joint_positions(target_state)
         time.sleep(1)
 
@@ -291,6 +291,8 @@ class HelloRobot:
         self.updateJoints()
         for joint_index in range(self.joint_array.rows()):
             self.joint_array[joint_index] = self.joints[self.joint_list[joint_index]]
+        # print('self.joints', self.joints)
+        # print('self.joint_array', self.joint_array)
 
         curr_pose = PyKDL.Frame() # Current pose of gripper in base frame
         del_pose = PyKDL.Frame() # Relative Movement of gripper 
