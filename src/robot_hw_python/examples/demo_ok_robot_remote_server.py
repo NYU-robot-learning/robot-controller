@@ -19,7 +19,7 @@ from PIL import Image
 
 # Mapping and perception
 from home_robot.agent.multitask import get_parameters
-from home_robot.agent.multitask import RobotAgentManip as RobotAgent
+from home_robot.agent.multitask import RemoteRobotAgentManip as RobotAgent
 
 # Chat and UI tools
 from home_robot.utils.point_cloud import numpy_to_pcd, show_point_cloud
@@ -111,16 +111,14 @@ def main(
             robot.switch_to_navigation_mode()
             demo.run_exploration(
                 rate,
-                manual_wait,
-                explore_iter=2,
-                task_goal=object_to_find,
-                go_home_at_end=navigate_home,
-                visualize=show_intermediate_maps,
+                explore_iter=2
             )
         else:
+            robot.move_to_nav_posture()
             robot.switch_to_navigation_mode()
             text = input('Enter object name: ')
-            if not demo.navigate(text):
+            point = demo.navigate(text)
+            if point is None:
                 print('Navigation Failure')
                 continue
             cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
@@ -139,7 +137,8 @@ def main(
             if input('You want to run placing: y/n') == 'n':
                 continue
             text = input('Enter receptacle name: ')
-            if not demo.navigate(text):
+            point = demo.navigate(text)
+            if point is None:
                 print('Navigation Failure')
                 continue
             cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])

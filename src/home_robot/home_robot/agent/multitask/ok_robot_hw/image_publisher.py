@@ -44,7 +44,7 @@ class ImagePublisher():
         self.socket.send_string(f"Additional data received robot")
 
         depth = add_data[0]
-        cropped = add_data[1]
+        width = add_data[1]
         retry = add_data[2]
         print(f"Additional data received - {add_data}")
         print("translation: ")
@@ -52,4 +52,4 @@ class ImagePublisher():
         print("rotation: ")
         print(rotation)
         print(self.socket.recv_string())    
-        return translation, rotation, depth, cropped, retry
+        return translation, rotation, depth, width, retry
