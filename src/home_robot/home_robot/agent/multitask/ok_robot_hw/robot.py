@@ -135,7 +135,9 @@ class HelloRobot:
             target_state[5] = wrist_roll    
         
         # Actual Movement
+        # print('Target Position', target_state)
         self.robot.manip.goto_joint_positions(target_state, relative = False)
+        # print('Actual location', self.robot.manip.get_joint_positions())
 
         # Head state update and Movement
         target_head_pan, target_head_tilt = self.robot.head.get_pan_tilt()
@@ -146,12 +148,12 @@ class HelloRobot:
         self.robot.head.set_pan_tilt(tilt = target_head_tilt, pan = target_head_pan)
         time.sleep(0.7)
 
-    def pickup(self, depth):
+    def pickup(self, width):
         """
             Code for grasping the object
             Gripper closes gradually until it encounters resistence
         """
-        next_gripper_pos = 1
+        next_gripper_pos = width
         while True:
             self.robot.manip.move_gripper(next_gripper_pos * self.STRETCH_GRIPPER_MAX)
             curr_gripper_pose = self.robot.manip.get_gripper_position()

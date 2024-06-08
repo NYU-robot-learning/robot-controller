@@ -69,7 +69,9 @@ class RobotAgentManip:
             end_link = "link_straight_gripper"
         else:
             stretch_gripper_max = 0.64
-            end_link = "link_gripper_s3_body"
+            # end_link = "link_gripper_s3_body"
+            end_link = "link_straight_gripper"
+        self.re = re
         self.transform_node = end_link
         self.manip_wrapper = Manipulation_Wrapper(self.robot, stretch_gripper_max = stretch_gripper_max, end_link = end_link)
         self.robot.move_to_nav_posture()
@@ -496,7 +498,7 @@ class RobotAgentManip:
         camera = RealSenseCamera(self.robot)
 
         time.sleep(2)
-        rotation, translation, _ = capture_and_process_image(
+        rotation, translation = capture_and_process_image(
             camera = camera,
             mode = 'place',
             obj = text,
@@ -512,7 +514,7 @@ class RobotAgentManip:
         time.sleep(1)
         self.manip_wrapper.move_to_position(wrist_yaw=0,
                                  wrist_pitch=0)
-        time.sleep(2)
+        time.sleep(1)
 
         # Placing the object
         move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
@@ -529,7 +531,7 @@ class RobotAgentManip:
         self.manip_wrapper.move_to_position(gripper_pos=1, 
                                 lift_pos = 1.05,
                                 arm_pos = 0)
-        time.sleep(4)
+        time.sleep(3)
         self.manip_wrapper.move_to_position(wrist_pitch=-1.57)
         time.sleep(1)
 
@@ -564,18 +566,25 @@ class RobotAgentManip:
 
         camera = RealSenseCamera(self.robot)
 
-        rotation, translation, depth = capture_and_process_image(
+        rotation, translation, depth, width = capture_and_process_image(
             camera = camera,
             mode = 'pick',
             obj = text,
             socket = self.image_sender.manip_socket, 
             hello_robot = self.manip_wrapper)
+
+        print('Predicted width:', width)
     
         if rotation is None:
             return False
         
+        if width < 0.075 and self.re == 3: 
+            gripper_width = 0.6
+        else:
+            gripper_width = 1
+
         if input('Do you want to do this manipulation? Y or N ') != 'N':
-            pickup(self.manip_wrapper, rotation, translation, base_node, self.transform_node, gripper_depth = depth)
+            pickup(self.manip_wrapper, rotation, translation, base_node, self.transform_node, gripper_depth = depth, gripper_width = gripper_width)
     
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])
@@ -602,7 +611,7 @@ def recv_array(socket, flags=0, copy=True, track=False):
 class ImageSender:
     def __init__(self, 
         stop_and_photo = False, 
-        ip = '100.107.224.62', 
+        ip = '100.108.67.79', 
         image_port = 5555,
         text_port = 5556,
         manip_port = 5557,
