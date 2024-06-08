@@ -215,7 +215,7 @@ class ImageProcessor:
         self.space = SparseVoxelMapNavigationSpace(
             self.voxel_map,
             HelloStretchKinematics(urdf_path = '/data/peiqi/robot-controller/assets/hab_stretch/urdf'),
-            step_size=parameters["step_size"],
+            # step_size=parameters["step_size"],
             rotation_step_size=parameters["rotation_step_size"],
             dilate_frontier_size=parameters[
                 "dilate_frontier_size"
@@ -264,8 +264,9 @@ class ImageProcessor:
                 localized_point = self.voxel_map_localizer.localize_AonB(text)
                 print('\n', text, localized_point, '\n')
             with self.visualization_lock:
-                point = self.sample_navigation(localized_point)
+                point = self.sample_navigation(start_pose, localized_point)
                 plt.savefig(self.log + '/debug_' + text + '.png')
+                plt.cla()
         # Do Frontier based exploration
         else:
             point = self.sample_frontier()
@@ -278,30 +279,48 @@ class ImageProcessor:
             print('Target point is', point)
             res = self.planner.plan(start_pose, point)
             if res.success:
-                send_array(self.text_socket, [pt.state for pt in res.trajectory])
+                traj = [pt.state for pt in res.trajectory]
+                # If we are navigating to some object of interst, send (x, y, z) of 
+                # the object so that we can make sure the robot looks at the object after navigation
+                if text != '': 
+                    traj.append(np.asarray(localized_point))
+                send_array(self.text_socket, traj)
             else:
                 print('[FAILURE]', res.reason)
                 send_array(self.text_socket, [])
 
-    def sample_navigation(self, point, radius_m = 0.8, verbose = True, max_tries = 100):
-        target_grid = self.voxel_map.xy_to_grid_coords(point[:2]).int()
-        obstacles, explored = self.voxel_map.get_2d_map()
-        point_mask = torch.zeros_like(explored)
-        point_mask[target_grid[0]: target_grid[0] + 2, target_grid[1]: target_grid[1] + 2] = True
-        try_count = 0
-        for goal in self.space.sample_near_mask(point_mask, radius_m=radius_m, debug = True):
-            goal = goal.cpu().numpy()
+    def sample_navigation(self, start, point, max_tries = 10):
+        goal = self.space.sample_target_point(start, point, self.planner, max_tries)
+        if goal is not None:
             print("Sampled Goal:", goal)
-            goal_is_valid = self.space.is_valid(goal, verbose=False)
-            if verbose:
-                print(" Goal is valid:", goal_is_valid)
-            try_count += 1
-            if try_count > max_tries:
-                return None
-            if not goal_is_valid:
-                print(" -> resample goal.")
-                continue
-            return goal
+            obstacles, explored = self.voxel_map.get_2d_map()
+            start_pt = self.planner.to_pt(start)
+            goal_pt = self.planner.to_pt(goal)
+            point_pt = self.planner.to_pt(point)
+            plt.scatter(start_pt[1], start_pt[0], s = 10)
+            plt.scatter(goal_pt[1], goal_pt[0], s = 10)
+            plt.scatter(point_pt[1], point_pt[0], s = 10)
+            plt.imshow(obstacles)
+        return goal
+
+        # target_grid = self.voxel_map.xy_to_grid_coords(point[:2]).int()
+        # obstacles, explored = self.voxel_map.get_2d_map()
+        # point_mask = torch.zeros_like(explored)
+        # point_mask[target_grid[0]: target_grid[0] + 2, target_grid[1]: target_grid[1] + 2] = True
+        # try_count = 0
+        # for goal in self.space.sample_near_mask(point_mask, radius_m=radius_m, debug = True):
+        #     goal = goal.cpu().numpy()
+        #     print("Sampled Goal:", goal)
+        #     goal_is_valid = self.space.is_valid(goal, verbose=False)
+        #     if verbose:
+        #         print(" Goal is valid:", goal_is_valid)
+        #     try_count += 1
+        #     if try_count > max_tries:
+        #         return None
+        #     if not goal_is_valid:
+        #         print(" -> resample goal.")
+        #         continue
+        #     return goal
 
     def sample_frontier(self):
         for goal in self.space.sample_closest_frontier(
@@ -678,25 +697,26 @@ class ImageProcessor:
             plt.title("explored")
             plt.axis("off")
             plt.savefig(self.log + '/debug' + str(self.obs_count) + '.jpg')
+            plt.cla()
 
 if __name__ == "__main__":
-    # imageProcessor = ImageProcessor(pcd_path = None)
-    imageProcessor = ImageProcessor(pcd_path = 'debug_2024-05-28_21-31-10/memory.pt', navigation_only = True)  
-    for text in ['red cup', 'red bowl', 'green bowl', 'blue whiteboard care bottle', 'white table', 'coffee machine', 'sink', 'microwave', 'orange tape', 'black chair', 'pink spray', 'purple moov body spray']:
-        print(text)
+    imageProcessor = ImageProcessor(pcd_path = None)
+    # imageProcessor = ImageProcessor(pcd_path = 'debug_2024-06-02_18-20-46/memory.pt', navigation_only = True)  
+    # for text in ['red cup', 'red bowl', 'green bowl', 'blue whiteboard care bottle', 'white table', 'coffee machine', 'sink', 'microwave', 'orange tape', 'black chair', 'pink spray', 'purple moov body spray']:
+    #     print(text)
         # imageProcessor.visualize_res(text = text) 
         # imageProcessor.visualize_hist(text = text)
         # imageProcessor.visualize_cs(text = text)
-        imageProcessor.test_DBSCAN(text = text)
-    # try:  
-    #     while True:
-    #         imageProcessor.recv_text()
-    # except KeyboardInterrupt:
-    #     if not imageProcessor.voxel_map_localizer.voxel_pcd._points is None:
-    #         print('Stop streaming images and write memory data, might take a while, please wait')
-    #         torch.save(imageProcessor.voxel_map_localizer.voxel_pcd, imageProcessor.log + '/memory.pt')
-    #         points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
-    #         points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-    #         pcd = numpy_to_pcd(points, rgb / 255)
-    #         o3d.io.write_point_cloud(imageProcessor.log + '/debug.pcd', pcd)
-    #         print('finished')
+        # imageProcessor.test_DBSCAN(text = text)
+    try:  
+        while True:
+            imageProcessor.recv_text()
+    except KeyboardInterrupt:
+        if not imageProcessor.voxel_map_localizer.voxel_pcd._points is None:
+            print('Stop streaming images and write memory data, might take a while, please wait')
+            torch.save(imageProcessor.voxel_map_localizer.voxel_pcd, imageProcessor.log + '/memory.pt')
+            points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
+            points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
+            pcd = numpy_to_pcd(points, rgb / 255)
+            o3d.io.write_point_cloud(imageProcessor.log + '/debug.pcd', pcd)
+            print('finished')

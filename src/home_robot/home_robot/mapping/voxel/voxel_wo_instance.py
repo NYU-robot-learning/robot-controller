@@ -841,11 +841,6 @@ class SparseVoxelMapVoxel(object):
         add_camera_poses(fig, poses)
         return fig
 
-    def sample_explored(self) -> Optional[np.ndarray]:
-        """Return obstacle-free xy point in explored space"""
-        obstacles, explored = self.get_2d_map()
-        return self.sample_from_mask(~obstacles & explored)
-
     def sample_from_mask(self, mask: torch.Tensor) -> Optional[np.ndarray]:
         """Sample from any mask"""
         valid_indices = torch.nonzero(mask, as_tuple=False)

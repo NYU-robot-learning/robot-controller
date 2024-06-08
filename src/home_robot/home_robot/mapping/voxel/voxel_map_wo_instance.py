@@ -15,7 +15,8 @@ import skimage.morphology
 import torch
 
 from home_robot.mapping.voxel import SparseVoxelMapVoxel as SparseVoxelMap
-from home_robot.motion import XYT, RobotModel
+from home_robot.motion import XYT
+from home_robot.motion.robot import Footprint
 from home_robot.utils.geometry import angle_difference, interpolate_angles
 from home_robot.utils.morphology import (
     binary_dilation,
@@ -34,7 +35,6 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
     def __init__(
         self,
         voxel_map: SparseVoxelMap,
-        robot: RobotModel,
         step_size: float = 0.1,
         rotation_step_size: float = 0.5,
         use_orientation: bool = False,
@@ -44,7 +44,6 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         extend_mode: str = "separate",
     ):
         print('------------------------YOU ARE NOW RUNNING PEIQI VOXEL NAVIGATION SPACE CODES-----------------')
-        self.robot = robot
         self.step_size = step_size
         self.rotation_step_size = rotation_step_size
         self.voxel_map = voxel_map
@@ -102,7 +101,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         Args:
             orientation_resolution: number of bins to break it into
         """
-        self._footprint = self.robot.get_footprint()
+        self._footprint = Footprint(width=0.34, length=0.33, width_offset=0.0, length_offset=-0.1)
         self._orientation_resolution = 64
         self._oriented_masks = []
 
@@ -251,7 +250,6 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         ok = bool(self.voxel_map.xyt_is_safe(state[:2]))
         # if verbose:
         #     print('is navigable:', ok)
-        # return ok
         if not ok:
             # This was
             return False
@@ -309,6 +307,87 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
             plt.show()
 
         return valid
+
+    def compute_theta(self, cur_x, cur_y, end_x, end_y):
+        theta = 0
+        if end_x == cur_x and end_y >= cur_y:
+            theta = np.pi / 2
+        elif end_x == cur_x and end_y < cur_y:
+            theta = -np.pi / 2
+        else:
+            theta = np.arctan((end_y - cur_y) / (end_x - cur_x))
+            if end_x < cur_x:
+                theta = theta + np.pi
+            if theta > np.pi:
+                theta = theta - 2 * np.pi
+            if theta < -np.pi:
+                theta = theta + 2 * np.pi
+        return theta
+
+    def sample_target_point(
+        self,
+        start: torch.Tensor,
+        point: torch.Tensor,
+        planner,
+        max_tries = 10,
+    ) -> Optional[np.array]:
+        """Sample a position near the mask and return.
+
+        Args:
+            look_at_any_point(bool): robot should look at the closest point on target mask instead of average pt
+        """
+
+        obstacles, explored = self.voxel_map.get_2d_map()
+
+        # Extract edges from our explored mask
+        start_pt = planner.to_pt(start)
+        reachable_points = planner.get_reachable_points(start_pt)
+        if len(reachable_points) == 0:
+            print('No target point find, maybe no point is reachable')
+            return None
+        reachable_xs, reachable_ys = zip(*reachable_points)
+        reachable_xs = torch.tensor(reachable_xs)
+        reachable_ys = torch.tensor(reachable_ys)
+        reachable = torch.empty(obstacles.shape, dtype = torch.bool).fill_(False)
+        reachable[reachable_xs, reachable_ys] = True
+        
+        obstacles, explored = self.voxel_map.get_2d_map()
+        if self.dilate_obstacles_kernel is not None:
+            obstacles = binary_dilation(
+                obstacles.float().unsqueeze(0).unsqueeze(0), self.dilate_obstacles_kernel
+            )[0, 0].bool()
+        reachable = reachable & ~obstacles
+
+        target_x, target_y = planner.to_pt(point)
+
+        xs, ys = torch.where(reachable)
+        if len(xs) < 1:
+            print('No target point find, maybe no point is reachable')
+            return None
+        selected_targets = torch.stack([xs, ys], dim = -1) \
+            [torch.linalg.norm( \
+                (torch.stack([xs, ys], dim = -1) - torch.tensor([target_x, target_y])).float(), dim = -1 \
+            ).topk(k = max_tries, largest = False).indices]
+
+        # TODO: was this:
+        # expanded_mask = expanded_mask & less_explored & ~obstacles
+
+        for selected_target in selected_targets:
+            selected_x, selected_y = planner.to_xy([selected_target[0], selected_target[1]])
+            theta = self.compute_theta(selected_x, selected_y, point[0], point[1])
+
+            # if debug and self.is_valid([selected_x, selected_y, theta]):
+            #     import matplotlib.pyplot as plt
+
+            #     obstacles, explored = self.voxel_map.get_2d_map()
+            #     plt.scatter(ys, xs, s = 1)
+            #     plt.scatter(selected_target[1], selected_target[0], s = 10)
+            #     plt.scatter(target_y, target_x, s = 10)
+            #     plt.imshow(obstacles)
+        
+            if self.is_valid([selected_x, selected_y, theta]):
+                return np.array([selected_x, selected_y, theta])
+        return None
 
     def sample_near_mask(
         self,
@@ -448,10 +527,10 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
 
         obstacles, explored = self.voxel_map.get_2d_map()
         # Extract edges from our explored mask
-        if self.dilate_obstacles_kernel is not None:
-            obstacles = binary_dilation(
-                obstacles.float().unsqueeze(0).unsqueeze(0), self.dilate_obstacles_kernel
-            )[0, 0].bool()
+        # if self.dilate_obstacles_kernel is not None:
+        #     obstacles = binary_dilation(
+        #         obstacles.float().unsqueeze(0).unsqueeze(0), self.dilate_obstacles_kernel
+        #     )[0, 0].bool()
         if self.dilate_explored_kernel is not None:
             less_explored = binary_erosion(
                 explored.float().unsqueeze(0).unsqueeze(0), self.dilate_explored_kernel
@@ -642,40 +721,3 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
 
         # Show the geometries of where we have explored
         open3d.visualization.draw_geometries(geoms)
-
-    def sample_valid_location(self, max_tries: int = 100) -> Optional[torch.Tensor]:
-        """Return a state that's valid and that we can move to.
-
-        Args:
-            max_tries(int): number of times to re-sample if cannot find a viable location.
-
-        Returns:
-            xyt(Tensor): a free space location, explored and collision-free
-        """
-
-        for i in range(max_tries):
-            xyt = torch.rand(3) * np.pi * 2
-            point = self.voxel_map.sample_explored()
-            xyt[:2] = point
-            if self.is_valid(xyt):
-                yield xyt
-        else:
-            yield None
-
-    def sample(self) -> np.ndarray:
-        """Sample any position that corresponds to an "explored" location. Goals are valid if they are within a reasonable distance of explored locations. Paths through free space are ok and don't collide.
-
-        Since our motion planners currently use numpy, we'll stick with that for the return type for now.
-        """
-
-        # Sample any point which is explored and not an obstacle
-        # Sampled points are convertd to CPU for now
-        point = self.voxel_map.sample_explored()
-
-        # Create holder
-        state = np.zeros(3)
-        state[:2] = point[0].cpu().numpy()
-
-        # Sample a random orientation
-        state[-1] = np.random.random() * 2 * np.pi
-        return state

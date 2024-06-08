@@ -45,7 +45,7 @@ max_near_distance: 0.3
 step_size: 0.1
 rotation_step_size: 0.2 
 dilate_frontier_size: 2  # Used to shrink the frontier back from the edges of the world
-dilate_obstacle_size: 0  # Used when selecting goals and computing what the "frontier" is 
+dilate_obstacle_size: 1  # Used when selecting navigation goals 
 default_expand_frontier_size: 5  # margin along the frontier where final robot position can be
 motion_planner:
         simplify_plans: False
