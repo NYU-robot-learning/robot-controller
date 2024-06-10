@@ -518,7 +518,7 @@ class RobotAgentManip:
 
         # Placing the object
         move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
-        self.manip_wrapper.move_to_position(gripper_pos=1)
+        self.manip_wrapper.move_to_position(gripper_pos = 0.35 / self.manip_wrapper.STRETCH_GRIPPER_MAX)
 
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
         self.manip_wrapper.move_to_position(lift_pos = self.manip_wrapper.robot.manip.get_joint_positions()[1] + 0.3)
@@ -578,6 +578,8 @@ class RobotAgentManip:
         if rotation is None:
             return False
         
+        if width < 0.045 and self.re == 3:
+            gripper_width = 0.45
         if width < 0.075 and self.re == 3: 
             gripper_width = 0.6
         else:
