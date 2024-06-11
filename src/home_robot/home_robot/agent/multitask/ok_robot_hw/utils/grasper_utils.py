@@ -153,7 +153,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     cam2base_transform, _, _ = robot.get_joint_transform(base_node, 'base_link')
     base_point = cam2base_transform * point
 
-    diff_value = (0.226 - gripper_depth - gripper_height) # 0.227 is the distance between link_Straight_gripper node and the gripper tip
+    diff_value = (0.227 - gripper_depth - gripper_height) # 0.227 is the distance between link_Straight_gripper node and the gripper tip
     transformed_point1[2] -= (diff_value)
     ref_diff = (diff_value)
 

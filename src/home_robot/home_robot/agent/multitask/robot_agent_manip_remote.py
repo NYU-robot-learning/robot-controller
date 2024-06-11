@@ -279,18 +279,27 @@ class RemoteRobotAgentManip:
 
         camera = RealSenseCamera(self.robot)
 
-        rotation, translation, depth = capture_and_process_image(
+        rotation, translation, depth, width = capture_and_process_image(
             camera = camera,
             mode = 'pick',
             obj = text,
             socket = self.image_sender.manip_socket, 
             hello_robot = self.manip_wrapper)
+
+        print('Predicted width:', width)
     
         if rotation is None:
             return False
         
+        if width < 0.045 and self.re == 3:
+            gripper_width = 0.45
+        if width < 0.075 and self.re == 3: 
+            gripper_width = 0.6
+        else:
+            gripper_width = 1
+
         if input('Do you want to do this manipulation? Y or N ') != 'N':
-            pickup(self.manip_wrapper, rotation, translation, base_node, self.transform_node, gripper_depth = depth)
+            pickup(self.manip_wrapper, rotation, translation, base_node, self.transform_node, gripper_depth = depth, gripper_width = gripper_width)
     
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])
