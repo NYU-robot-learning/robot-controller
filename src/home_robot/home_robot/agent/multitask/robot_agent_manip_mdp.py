@@ -123,7 +123,7 @@ class RobotAgentMDP:
         self.robot.move_to_nav_posture()
         start = self.robot.get_base_pose()
         print("       Start:", start)
-        res = self.image_sender.query_text('', start)  
+        res = self.image_sender.query_text(text, start)  
         if len(res) > 0:
             print("Plan successful!")
             if np.isnan(res[-2]).all():
