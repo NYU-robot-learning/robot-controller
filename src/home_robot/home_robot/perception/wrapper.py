@@ -62,6 +62,16 @@ class OvmmPerception:
                 verbose=verbose,
                 **module_kwargs,
             )
+        elif self._detection_module == "mobile_sam":
+            from home_robot.perception.detection.grounded_sam.sam_perception import (
+                SAMPerception,
+            )
+
+            self._segmentation = SAMPerception(
+                custom_vocabulary=".",
+                verbose=verbose,
+                **module_kwargs,
+            )
         else:
             raise NotImplementedError
 
@@ -217,13 +227,14 @@ def create_semantic_sensor(
     device_id: int = 0,
     verbose: bool = True,
     module_kwargs: Dict[str, Any] = {},
+    config_path="src/home_robot/config/perception.yaml",
     **kwargs,
 ):
     """Create segmentation sensor and load config. Returns config from file, as well as a OvmmPerception object that can be used to label scenes."""
     if verbose:
         print("- Loading configuration")
     if config is None:
-        config = load_config(visualize=False, **kwargs)
+        config = load_config(visualize=False, config_path=config_path, **kwargs)
     if category_map_file is None:
         category_map_file = config.ENVIRONMENT.category_map_file
 

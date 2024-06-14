@@ -35,12 +35,21 @@ class RobotClient(ABC):
         raise NotImplementedError()
 
     @abstractmethod
+    def get_base_pose(self) -> np.ndarray:
+        """Get the current pose of the base"""
+        raise NotImplementedError()
+
+    @abstractmethod
     def reset(self):
         """Reset everything in the robot's internal state"""
         raise NotImplementedError()
 
     @abstractmethod
     def switch_to_navigation_mode(self):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def switch_to_manipulation_mode(self):
         raise NotImplementedError()
 
     def in_manipulation_mode(self) -> bool:
@@ -55,8 +64,14 @@ class RobotClient(ABC):
         """Override this if you want to check to see if a particular motion failed, e.g. it was not reachable and we don't know why."""
         return False
 
+    def start(self) -> bool:
+        """Override this if there's custom startup logic that you want to add before anything else.
+
+        Returns True if we actually should do anything (like update) after this."""
+        return False
+
     @abstractmethod
-    def get_robot_model() -> RobotModel:
+    def get_robot_model(self) -> RobotModel:
         """return a model of the robot for planning"""
         raise NotImplementedError()
 

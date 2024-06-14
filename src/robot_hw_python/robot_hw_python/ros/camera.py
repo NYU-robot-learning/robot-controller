@@ -7,10 +7,10 @@ from collections import deque
 
 import numpy as np
 import rclpy
-from home_robot.utils.image import Camera
 from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image
 
+from home_robot.utils.image import Camera
 from robot_hw_python.ros.msg_numpy import image_to_numpy
 
 
@@ -21,7 +21,7 @@ class RosCamera(Camera):
         self,
         ros_client,
         name: str = "/camera/color",
-        verbose: bool = False,
+        verbose: bool = True,
         rotations: int = 0,
         buffer_size: int = None,
     ):
@@ -41,23 +41,24 @@ class RosCamera(Camera):
         self._img = None
         self._t = Time()
         self._lock = threading.Lock()
+        print(name)
         self._camera_info_topic = name + "/camera_info"
 
         if verbose:
             print("Waiting for camera info on", self._camera_info_topic + "...")
 
-        self.camera_info = None
         self._info_sub = self._ros_client.create_subscription(
             CameraInfo, self._camera_info_topic, self.cam_info_callback, 100
         )
-        self.wait_for_camera_info()
-        cam_info = self.camera_info
+        cam_info = self.wait_for_camera_info()
+        print("Camera info:", cam_info)
 
         # Buffer
         self.buffer_size = buffer_size
         if self.buffer_size is not None:
             # create buffer
-            self._buffer = deque()
+            self._buffer: deque = deque()
+
         self.height = cam_info.height
         self.width = cam_info.width
         self.pos, self.orn, self.pose_matrix = None, None, None
@@ -91,22 +92,27 @@ class RosCamera(Camera):
             print(cam_info)
             print("---------------")
         self.frame_id = cam_info.header.frame_id
-        if self.name.split("/")[3] == "color":
-            self.topic_name = name + "/image_raw"
-        else:
-            self.topic_name = name + "/image_rect_raw"
-        self._sub = self._ros_client.create_subscription(Image, self.topic_name, self._cb, 1)
+
+        # Get the
+        if verbose:
+            print("... this is the", self.name.split("/")[-1], "camera.")
+        self.topic_name = name + "/image_raw"
+        self._sub = self._ros_client.create_subscription(
+            Image, self.topic_name, self._cb, 1
+        )
 
     def cam_info_callback(self, msg):
         """Camera Info callback"""
         self.camera_info = msg
 
-    def wait_for_camera_info(self):
+    def wait_for_camera_info(self) -> CameraInfo:
         """Wait until you get the camera info"""
 
+        self.camera_info = None
         rate = self._ros_client.create_rate(100)
         while self.camera_info is None:
             rate.sleep()
+        return self.camera_info
 
     def _cb(self, msg):
         """capture the latest image and save it"""

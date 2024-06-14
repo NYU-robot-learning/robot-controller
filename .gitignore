@@ -87,3 +87,6 @@ projects/habitat_ovmm/configs/agent/generated/*
 /build/*
 /install/*
 /log/*
+
+# VLM output
+vlm_plan.txt

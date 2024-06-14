@@ -14,6 +14,7 @@ from home_robot.core.interfaces import ContinuousFullBodyAction
 from home_robot.motion.bullet import BulletRobotModel, PybulletIKSolver
 from home_robot.motion.pinocchio_ik_solver import PinocchioIKSolver, PositionIKOptimizer
 from home_robot.motion.robot import Footprint
+from home_robot.utils.config import fix_filename_with_home_robot_root
 from home_robot.utils.pose import to_matrix
 
 # Stretch stuff
@@ -235,6 +236,7 @@ class HelloStretchKinematics(BulletRobotModel):
     look_front = np.array([0.0, math.radians(-30)])
     look_ahead = np.array([0.0, 0.0])
     look_close = np.array([0.0, math.radians(-45)])
+    look_down = np.array([0.0, math.radians(-58)])
 
     max_arm_height = 1.2
 
@@ -270,8 +272,9 @@ class HelloStretchKinematics(BulletRobotModel):
     def get_footprint(self) -> Footprint:
         """Return footprint for the robot. This is expected to be a mask."""
         # Note: close to the actual measurements
-        # return Footprint(width=0.34, length=0.33, width_offset=0.0, length_offset=0.1)
-        return Footprint(width=0.4, length=0.5, width_offset=0.0, length_offset=0.1)
+        return Footprint(width=0.34, length=0.33, width_offset=0.0, length_offset=-0.1)
+        # return Footprint(width=0.4, length=0.5, width_offset=0.0, length_offset=0.1)
+        # return Footprint(width=0.2, length=0.2, width_offset=0.0, length_offset=0.1)
 
     def _create_ik_solvers(self, ik_type: str = "pinocchio", visualize: bool = False):
         """Create ik solvers using physics backends such as pybullet or pinocchio."""
@@ -316,7 +319,7 @@ class HelloStretchKinematics(BulletRobotModel):
         name: str = "hello_robot_stretch",
         urdf_path: str = "",
         visualize: bool = False,
-        root: str = ".",
+        root: str = "$HOME_ROBOT_ROOT",
         ik_type: str = "pinocchio",
         ee_link_name: Optional[str] = None,
         grasp_frame: Optional[str] = None,
@@ -336,6 +339,7 @@ class HelloStretchKinematics(BulletRobotModel):
             manip_urdf = os.path.join(
                 urdf_path, "planner_calibrated_manipulation_mode.urdf"
             )
+        root = fix_filename_with_home_robot_root(root)
         self.full_body_urdf_path = os.path.join(root, full_body_urdf)
         self.manip_mode_urdf_path = os.path.join(root, manip_urdf)
         super(HelloStretchKinematics, self).__init__(

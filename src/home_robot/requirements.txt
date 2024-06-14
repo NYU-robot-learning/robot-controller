@@ -26,3 +26,8 @@ h5py
 imageio
 pygifsicle
 pynput
+torch_geometric
+atomicwrites
+git+https://github.com/facebookresearch/pytorch3d.git
+lxml
+transforms3d

@@ -1,4 +1,4 @@
-### Installation
+### HomeRobot ROS2 Installation
 
 ```sh
 # Make sure ROS can find python properly
@@ -6,7 +6,7 @@ sudo apt install python-is-python3 pybind11-dev
 
 # Clone the repository
 git clone https://github.com/NYU-robot-learning/robot-controller
-git checkout ros-migration
+git checkout cpaxton/ros2-migration
 HOME_ROBOT_ROOT=$(realpath robot-controller)
 
 # Install requirements
@@ -26,17 +26,27 @@ colcon build
 
 ### Running
 
-In one terminal build robot_hw_python package after any changes has been made
+In one terminal build robot_hw_python package after any changes has been made:
 ```
 cd ~/ament_ws
-colcon build --packages-select robot_hw_python
+colcon build --symlink-install --packages-select robot_hw_python
 ```
+Using the `--symlink-install` flag means that you only need to run this once if you make any edits.
 
-In another terminal run the launch file
+
+Then, in another terminal run the launch file
 ```
 cd ~/ament_ws
 sudo ./install/setup.bash
 ros2 launch robot_hw_python startup_stretch_hector_slam.launch.py
+```
+
+#### Option 2
+
+```
+cd ~/ament_ws
+sudo ./install/setup.bash
+ros2 launch robot_hw_python start_server.py
 ```
 
 In another terminal open python shell and run following commands to operate the robot using stretch_user_client node

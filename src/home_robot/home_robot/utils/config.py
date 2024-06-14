@@ -112,3 +112,12 @@ def load_slap_config(
         raise RuntimeError("No ground truth semantics in the real world!")
     config.freeze()
     return config
+
+
+def fix_filename_with_home_robot_root(filename):
+    if "$HOME_ROBOT_ROOT" in filename:
+        root_path = os.environ.get("HOME_ROBOT_ROOT")
+        if root_path is None:
+            raise RuntimeError("Set HOME_ROBOT_ROOT environment variable!")
+        filename = filename.replace("$HOME_ROBOT_ROOT", root_path)
+    return filename

@@ -6,6 +6,7 @@ from typing import Dict, Iterable, List, Optional
 
 import numpy as np
 import torch
+
 from home_robot.core.interfaces import Observations
 from home_robot.core.robot import ControlMode, RobotClient
 from home_robot.motion.robot import RobotModel
@@ -76,6 +77,10 @@ class StretchClient(RobotClient):
     @property
     def model(self):
         return self._robot_model
+
+    def at_goal(self) -> bool:
+        """Returns true if we have up to date head info and are at goal position"""
+        return self.nav.at_goal()
 
     # Mode interfaces
 
@@ -161,20 +166,26 @@ class StretchClient(RobotClient):
         """Move the arm and head into manip mode posture: gripper down, head facing the gripper."""
         self.switch_to_manipulation_mode()
         self.head.look_at_ee(blocking=False)
-        self.manip.goto_joint_positions(self.manip._extract_joint_pos(STRETCH_PREGRASP_Q))
+        self.manip.goto_joint_positions(
+            self.manip._extract_joint_pos(STRETCH_PREGRASP_Q)
+        )
         print("- Robot switched to manipulation mode.")
 
     def move_to_demo_pregrasp_posture(self):
         """Move the arm and head into pre-demo posture: gripper straight, arm way down, head facing the gripper."""
         self.switch_to_manipulation_mode()
         self.head.look_at_ee(blocking=False)
-        self.manip.goto_joint_positions(self.manip._extract_joint_pos(STRETCH_DEMO_PREGRASP_Q))
+        self.manip.goto_joint_positions(
+            self.manip._extract_joint_pos(STRETCH_DEMO_PREGRASP_Q)
+        )
 
     def move_to_pre_demo_posture(self):
         """Move the arm and head into pre-demo posture: gripper straight, arm way down, head facing the gripper."""
         self.switch_to_manipulation_mode()
         self.head.look_at_ee(blocking=False)
-        self.manip.goto_joint_positions(self.manip._extract_joint_pos(STRETCH_PREDEMO_Q))
+        self.manip.goto_joint_positions(
+            self.manip._extract_joint_pos(STRETCH_PREDEMO_Q)
+        )
 
     def move_to_nav_posture(self):
         """Move the arm and head into nav mode. The head will be looking front."""
@@ -182,7 +193,9 @@ class StretchClient(RobotClient):
         # First retract the robot's joints
         self.switch_to_manipulation_mode()
         self.head.look_front(blocking=False)
-        self.manip.goto_joint_positions(self.manip._extract_joint_pos(STRETCH_NAVIGATION_Q))
+        self.manip.goto_joint_positions(
+            self.manip._extract_joint_pos(STRETCH_NAVIGATION_Q)
+        )
         self.switch_to_navigation_mode()
         print("- Robot switched to navigation mode.")
 
@@ -190,7 +203,9 @@ class StretchClient(RobotClient):
         """Move the arm to nav mode, head to nav mode with PREGRASP's tilt. The head will be looking front."""
         self.switch_to_manipulation_mode()
         self.head.look_front(blocking=False)
-        self.manip.goto_joint_positions(self.manip._extract_joint_pos(STRETCH_POSTNAV_Q))
+        self.manip.goto_joint_positions(
+            self.manip._extract_joint_pos(STRETCH_POSTNAV_Q)
+        )
         self.switch_to_navigation_mode()
 
     def get_base_pose(self) -> np.ndarray:
@@ -247,7 +262,8 @@ class StretchClient(RobotClient):
             gps=gps,
             compass=np.array([theta]),
             camera_pose=self.head.get_pose(rotated=rotate_head_pts),
-            joint=self.model.config_to_hab(joint_positions),
+            # joint=self.model.config_to_hab(joint_positions),
+            joint=joint_positions,
             camera_K=self.get_camera_intrinsics(),
         )
         return obs
@@ -255,3 +271,16 @@ class StretchClient(RobotClient):
     def get_camera_intrinsics(self) -> torch.Tensor:
         """Get 3x3 matrix of camera intrisics K"""
         return torch.from_numpy(self.head._ros_client.rgb_cam.K).float()
+
+    def arm_to(self, q: np.ndarray):
+        """Send arm commands"""
+        assert q.shape[-1] == 6
+        self.manip.goto_joint_positions(joint_positions=q)
+
+
+if __name__ == "__main__":
+    import rclpy
+
+    rclpy.init()
+    client = StretchClient()
+    breakpoint()

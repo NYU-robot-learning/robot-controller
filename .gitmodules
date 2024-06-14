@@ -23,6 +23,3 @@
 [submodule "src/home_robot/home_robot/perception/detection/grounded_sam/Grounded-Segment-Anything"]
 	path = src/home_robot/home_robot/perception/detection/grounded_sam/Grounded-Segment-Anything
 	url = https://github.com/IDEA-Research/Grounded-Segment-Anything
-[submodule "src/third_party/spot-sim2real"]
-	path = src/third_party/spot-sim2real
-	url = git@github.com:Jdvakil/spot-sim2real.git
