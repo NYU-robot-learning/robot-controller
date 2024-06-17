@@ -127,7 +127,6 @@ class RobotAgentManip:
         self.space = SparseVoxelMapNavigationSpace(
             self.voxel_map,
             self.robot.get_robot_model(),
-            step_size=parameters["step_size"],
             rotation_step_size=parameters["rotation_step_size"],
             dilate_frontier_size=parameters[
                 "dilate_frontier_size"
@@ -612,7 +611,7 @@ def recv_array(socket, flags=0, copy=True, track=False):
 class ImageSender:
     def __init__(self, 
         stop_and_photo = False, 
-        ip = '100.108.67.79', 
+        ip = '172.24.71.227', 
         image_port = 5555,
         text_port = 5556,
         manip_port = 5557,

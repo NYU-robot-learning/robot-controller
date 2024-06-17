@@ -243,7 +243,7 @@ class HelloStretchKinematics(BulletRobotModel):
     default_ee_link_name = "link_straight_gripper"
 
     default_manip_mode_controlled_joints = [
-        "base_x_joint",
+        "joint_fake",
         "joint_lift",
         "joint_arm_l3",
         "joint_arm_l2",
@@ -336,7 +336,8 @@ class HelloStretchKinematics(BulletRobotModel):
         else:
             full_body_urdf = os.path.join(urdf_path, "planner_calibrated.urdf")
             manip_urdf = os.path.join(
-                urdf_path, "planner_calibrated_manipulation_mode.urdf"
+                # urdf_path, "planner_calibrated_manipulation_mode.urdf"
+                urdf_path, "stretch_manip_mode.urdf"
             )
         self.full_body_urdf_path = os.path.join(root, full_body_urdf)
         self.manip_mode_urdf_path = os.path.join(root, manip_urdf)
