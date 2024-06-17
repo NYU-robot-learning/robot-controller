@@ -2,7 +2,6 @@ import time
 from random import random
 from typing import Callable, List, Optional, Tuple, Set
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from home_robot.motion.base import PlanResult
@@ -136,7 +135,7 @@ class AStar():
             return False
         return ((c[1] - b[1]) / (c[0] - b[0])) == ((b[1] - a[1]) / (b[0] - a[0]))
 
-    def clean_path(self, path: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    def clean_path(self, path) -> List[Tuple[int, int]]:
         """Cleans up the final path.
 
         This implements a simple algorithm where, given some current position,
@@ -155,7 +154,7 @@ class AStar():
         i = 0
         while i < len(path) - 1:
             for j in range(len(path) - 1, i, -1):
-               if self.is_in_line_of_sight(path[i], path[j]):
+               if self.is_in_line_of_sight(path[i][:2], path[j][:2]):
                    break
             else:
                j = i + 1
@@ -193,6 +192,7 @@ class AStar():
             The set of all reachable points
         """
 
+        self.reset()
         start_pt = self.get_unoccupied_neighbor(start_pt)
         if start_pt is None:
             return set()
@@ -216,7 +216,7 @@ class AStar():
         self,
         start_xy: Tuple[float, float],
         end_xy: Tuple[float, float],
-        remove_line_of_sight_points: bool = True,
+        remove_line_of_sight_points: bool = False,
     ) -> List[Tuple[float, float]]:
 
         start_pt, end_pt = self.to_pt(start_xy), self.to_pt(end_xy)

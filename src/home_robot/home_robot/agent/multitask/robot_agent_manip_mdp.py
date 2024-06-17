@@ -41,7 +41,7 @@ from home_robot.agent.multitask.ok_robot_hw.camera import RealSenseCamera
 from home_robot.agent.multitask.ok_robot_hw.utils.grasper_utils import pickup, move_to_point, capture_and_process_image
 from home_robot.agent.multitask.ok_robot_hw.utils.communication_utils import send_array, recv_array
 
-class RemoteRobotAgentManip:
+class RobotAgentMDP:
     """Basic demo code. Collects everything that we need to make this work."""
 
     _retry_on_fail = False
@@ -93,19 +93,18 @@ class RemoteRobotAgentManip:
     def look_around(self, visualize: bool = False):
         logger.info("Look around to check")
         time.sleep(1)
-        for pan in [0.5, 0., -0.5, -1., -1.5, -2.]:
-            for tilt in [-0.3, -0.5]:
+        for pan in [0.5, -0.5, -1.5]:
+            for tilt in [-0.5]:
                 self.robot.head.set_pan_tilt(pan, tilt)
                 time.sleep(0.5)
-                # We need differen tilts to help the performance of semantic memory, but we don't want to waste time adding it to obstalce map
                 self.update()
 
-            if visualize:
-                self.voxel_map.show(
-                    orig=np.zeros(3),
-                    xyt=self.robot.get_base_pose(),
-                    footprint=self.robot.get_robot_model().get_footprint(),
-                )
+                if visualize:
+                    self.voxel_map.show(
+                        orig=np.zeros(3),
+                        xyt=self.robot.get_base_pose(),
+                        footprint=self.robot.get_robot_model().get_footprint(),
+                    )
 
     def update(self):
         """Step the data collector. Get a single observation of the world. Remove bad points, such as those from too far or too near the camera. Update the 3d world representation."""
@@ -115,83 +114,60 @@ class RemoteRobotAgentManip:
         self.obs_count += 1
         self.image_sender.send_images(obs)
 
-    def run_exploration(
+    def execute_action(
         self,
-        manual_wait: bool = False,
-        explore_iter: int = 3,
-        try_to_plan_iter: int = 10,
-        dry_run: bool = False,
-        visualize: bool = False,
+        text: str,
+    ):
+        self.robot.move_to_nav_posture()
+        self.look_around()
+        self.robot.move_to_nav_posture()
+        start = self.robot.get_base_pose()
+        print("       Start:", start)
+        res = self.image_sender.query_text(text, start)  
+        if len(res) > 0:
+            print("Plan successful!")
+            if np.isnan(res[-2]).all():
+                self.robot.execute_trajectory(
+                    res[:-2],
+                    pos_err_threshold=self.pos_err_threshold,
+                    rot_err_threshold=self.rot_err_threshold,
+                )
+                return True, res[-1]
+            else:
+                self.robot.execute_trajectory(
+                    res,
+                    pos_err_threshold=self.pos_err_threshold,
+                    rot_err_threshold=self.rot_err_threshold,
+                )
+                return False, None
+        else:
+            print("Failed. Try again!")
+            return None, None
+
+    def run_exploration(
+        self
     ):
         """Go through exploration. We use the voxel_grid map created by our collector to sample free space, and then use our motion planner (RRT for now) to get there. At the end, we plan back to (0,0,0).
 
         Args:
             visualize(bool): true if we should do intermediate debug visualizations"""
-        self.robot.move_to_nav_posture()
-        
-        for i in range(explore_iter):
-            print("\n" * 2)
-            print("-" * 20, i + 1, "/", explore_iter, "-" * 20)
-            self.look_around()
-            self.robot.move_to_nav_posture()
-            start = self.robot.get_base_pose()
+        status, _ = self.execute_action("")
+        if status is None:
+            print("Exploration failed! Perhaps nowhere to explore!")
+            return False
+        return True
 
-            print("       Start:", start)
-            res = self.image_sender.query_text('', start)
-
-            # if it succeeds, execute a trajectory to this position
-            if len(res) > 0:
-                print("Plan successful!")
-                if not dry_run:
-                    self.robot.execute_trajectory(
-                        res,
-                        pos_err_threshold=self.pos_err_threshold,
-                        rot_err_threshold=self.rot_err_threshold,
-                    )
-            else:
-                if self._retry_on_fail:
-                    print("Failed. Try again!")
-                    continue
-                else:
-                    print("Failed. Quitting!")
-                    break
-
-            if self.robot.last_motion_failed():
-                print("!!!!!!!!!!!!!!!!!!!!!!")
-                print("ROBOT IS STUCK! Move back!")
-
-                # help with debug TODO: remove
-                self.update()
-                # self.save_svm(".")
-                print(f"robot base pose: {self.robot.get_base_pose()}")
-
-                r = np.random.randint(3)
-                if r == 0:
-                    self.robot.navigate_to([-0.1, 0, 0], relative=True, blocking=True)
-                elif r == 1:
-                    self.robot.navigate_to(
-                        [0, 0, np.pi / 4], relative=True, blocking=True
-                    )
-                elif r == 2:
-                    self.robot.navigate_to(
-                        [0, 0, -np.pi / 4], relative=True, blocking=True
-                    )
-
-    def navigate(self, text):
-        start = self.robot.get_base_pose()
-        trajectory = self.image_sender.query_text(text, start)
-        
-        if len(trajectory) > 0:
-            self.robot.execute_trajectory(
-                trajectory[:-1],
-                pos_err_threshold=self.pos_err_threshold,
-                rot_err_threshold=self.rot_err_threshold,
-            )
-            return trajectory[-1]
-        else:
-            print('Navigation Failure!')
-            return None
-        # self.look_ahead()
+    def navigate(self, text, max_step = 50):
+        finished = False
+        step = 0
+        end_point = None
+        while not finished and step < max_step:
+            step += 1
+            finished, end_point = self.execute_action(text) 
+            if finished is None:
+                print("Navigation failed! The path might be blocked!")
+                return None
+        return end_point
 
     def place(self, text, init_tilt = INIT_HEAD_TILT, base_node = TOP_CAMERA_NODE):
         '''
@@ -211,7 +187,7 @@ class RemoteRobotAgentManip:
         camera = RealSenseCamera(self.robot)
 
         time.sleep(2)
-        rotation, translation = capture_and_process_image(
+        rotation, translation, _ = capture_and_process_image(
             camera = camera,
             mode = 'place',
             obj = text,
@@ -231,21 +207,22 @@ class RemoteRobotAgentManip:
 
         # Placing the object
         move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
-        self.manip_wrapper.move_to_position(gripper_pos = 0.35 / self.manip_wrapper.STRETCH_GRIPPER_MAX)
+        time.sleep(1.5)
+        self.manip_wrapper.move_to_position(gripper_pos=1)
 
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
         self.manip_wrapper.move_to_position(lift_pos = self.manip_wrapper.robot.manip.get_joint_positions()[1] + 0.3)
-        self.manip_wrapper.move_to_position(wrist_roll = 3)
-        time.sleep(1)
-        self.manip_wrapper.move_to_position(wrist_roll = -3)
+        self.manip_wrapper.move_to_position(wrist_roll = 2.5)
+        time.sleep(1.5)
+        self.manip_wrapper.move_to_position(wrist_roll = -2.5)
+        time.sleep(1.5)
 
         # Wait for some time and shrink the arm back
-        self.manip_wrapper.move_to_position(
-            lift_pos = 1.05,
-            arm_pos = 0)
+        self.manip_wrapper.move_to_position(gripper_pos=1, 
+                                lift_pos = 1.05,
+                                arm_pos = 0)
         time.sleep(3)
         self.manip_wrapper.move_to_position(wrist_pitch=-1.57)
-        time.sleep(1)
 
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])
