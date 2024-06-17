@@ -263,14 +263,25 @@ class ImageProcessor:
             with self.voxel_map_lock:
                 localized_point = self.voxel_map_localizer.localize_AonB(text)
                 print('\n', text, localized_point, '\n')
-            with self.visualization_lock:
-                point = self.sample_navigation(start_pose, localized_point)
-                plt.savefig(self.log + '/debug_' + text + '.png')
-                plt.cla()
         # Do Frontier based exploration
         else:
-            point = self.sample_frontier()
-            # plt.savefig(self.log + '/get_frontier_debug_' + str(self.obs_count) + '.jpg')
+            localized_point = self.sample_frontier()
+            print('\n', localized_point, '\n')
+        
+        if localized_point is None:
+            print('Unable to find any target point, some exception might happen')
+            send_array(self.text_socket, [])
+        
+        if len(localized_point) == 2:
+            localized_point = np.array([localized_point[0], localized_point[1], 0])
+
+        with self.visualization_lock:
+            point = self.sample_navigation(start_pose, localized_point)
+            if text != '':
+                plt.savefig(self.log + '/debug_' + text + str(self.obs_count) + '.png')
+            else:
+                plt.savefig(self.log + '/debug_exploration' + str(self.obs_count) + '.png')
+            plt.cla()
 
         if point is None:
             print('Unable to find any target point, some exception might happen')
@@ -280,47 +291,36 @@ class ImageProcessor:
             res = self.planner.plan(start_pose, point)
             if res.success:
                 traj = [pt.state for pt in res.trajectory]
+                traj = self.planner.clean_path(traj)
                 # If we are navigating to some object of interst, send (x, y, z) of 
                 # the object so that we can make sure the robot looks at the object after navigation
-                if text != '': 
-                    traj.append(np.asarray(localized_point))
+                if len(traj) <= 6: 
+                    traj.append([np.nan, np.nan, np.nan])
+                    if isinstance(localized_point, torch.Tensor):
+                        localized_point = localized_point.tolist()
+                    traj.append(localized_point)
+                else:
+                    traj = traj[:6]
+                print('Planned trajectory:', traj)
                 send_array(self.text_socket, traj)
             else:
                 print('[FAILURE]', res.reason)
                 send_array(self.text_socket, [])
 
-    def sample_navigation(self, start, point, max_tries = 10):
+    def sample_navigation(self, start, point, max_tries = 15):
         goal = self.space.sample_target_point(start, point, self.planner, max_tries)
+        print("point:", point, "goal:", goal)
+        obstacles, explored = self.voxel_map.get_2d_map()
+        plt.cla()
+        start_pt = self.planner.to_pt(start)
+        plt.scatter(start_pt[1], start_pt[0], s = 10)
+        point_pt = self.planner.to_pt(point)
+        plt.scatter(point_pt[1], point_pt[0], s = 10)
         if goal is not None:
-            print("Sampled Goal:", goal)
-            obstacles, explored = self.voxel_map.get_2d_map()
-            start_pt = self.planner.to_pt(start)
             goal_pt = self.planner.to_pt(goal)
-            point_pt = self.planner.to_pt(point)
-            plt.scatter(start_pt[1], start_pt[0], s = 10)
             plt.scatter(goal_pt[1], goal_pt[0], s = 10)
-            plt.scatter(point_pt[1], point_pt[0], s = 10)
-            plt.imshow(obstacles)
+        plt.imshow(self.planner._navigable)
         return goal
-
-        # target_grid = self.voxel_map.xy_to_grid_coords(point[:2]).int()
-        # obstacles, explored = self.voxel_map.get_2d_map()
-        # point_mask = torch.zeros_like(explored)
-        # point_mask[target_grid[0]: target_grid[0] + 2, target_grid[1]: target_grid[1] + 2] = True
-        # try_count = 0
-        # for goal in self.space.sample_near_mask(point_mask, radius_m=radius_m, debug = True):
-        #     goal = goal.cpu().numpy()
-        #     print("Sampled Goal:", goal)
-        #     goal_is_valid = self.space.is_valid(goal, verbose=False)
-        #     if verbose:
-        #         print(" Goal is valid:", goal_is_valid)
-        #     try_count += 1
-        #     if try_count > max_tries:
-        #         return None
-        #     if not goal_is_valid:
-        #         print(" -> resample goal.")
-        #         continue
-        #     return goal
 
     def sample_frontier(self):
         for goal in self.space.sample_closest_frontier(
@@ -330,13 +330,13 @@ class ImageProcessor:
                 return None
             goal = goal.cpu().numpy()
             print("Sampled Goal:", goal)
-            show_goal = np.zeros(3)
-            show_goal[:2] = goal[:2]
-            goal_is_valid = self.space.is_valid(goal)
-            print(" Goal is valid:", goal_is_valid)
-            if not goal_is_valid:
-                print(" -> resample goal.")
-                continue
+            # show_goal = np.zeros(3)
+            # show_goal[:2] = goal[:2]
+            # goal_is_valid = self.space.is_valid(goal)
+            # print(" Goal is valid:", goal_is_valid)
+            # if not goal_is_valid:
+            #     print(" -> resample goal.")
+            #     continue
             return goal
             
 

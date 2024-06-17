@@ -433,7 +433,7 @@ class ObjectHandler:
                 [
                     filter_gg[0].translation,
                     filter_gg[0].rotation_matrix,
-                    [filter_gg[0].depth, crop_flag, 0],
+                    [filter_gg[0].depth, filter_gg[0].width, 0],
                     data_msg,
                 ]
             )

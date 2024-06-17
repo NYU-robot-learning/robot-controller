@@ -329,7 +329,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         start: torch.Tensor,
         point: torch.Tensor,
         planner,
-        max_tries = 10,
+        max_tries = 25,
     ) -> Optional[np.array]:
         """Sample a position near the mask and return.
 
@@ -367,7 +367,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         selected_targets = torch.stack([xs, ys], dim = -1) \
             [torch.linalg.norm( \
                 (torch.stack([xs, ys], dim = -1) - torch.tensor([target_x, target_y])).float(), dim = -1 \
-            ).topk(k = max_tries, largest = False).indices]
+            ).topk(k = len(xs), largest = False).indices]
 
         # TODO: was this:
         # expanded_mask = expanded_mask & less_explored & ~obstacles
@@ -384,8 +384,10 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
             #     plt.scatter(selected_target[1], selected_target[0], s = 10)
             #     plt.scatter(target_y, target_x, s = 10)
             #     plt.imshow(obstacles)
-        
-            if self.is_valid([selected_x, selected_y, theta]):
+            target_is_valid = self.is_valid([selected_x, selected_y, theta])
+            print('Target:', [selected_x, selected_y, theta])
+            print('Target is valid:', target_is_valid)
+            if target_is_valid:
                 return np.array([selected_x, selected_y, theta])
         return None
 
@@ -634,18 +636,6 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         distances = frontier_map.compressed()
         xs, ys = np.where(~frontier_map.mask)
 
-        # if debug:
-        #     plt.subplot(121)
-        #     plt.imshow(distance_map, interpolation="nearest")
-        #     plt.title("Distance to start")
-        #     plt.axis("off")
-
-        #     plt.subplot(122)
-        #     plt.imshow(frontier_map, interpolation="nearest")
-        #     plt.title("Distance to start (edges only)")
-        #     plt.axis("off")
-        #     plt.show()
-
         if verbose or debug:
             print(f"-> found {len(distances)} items")
 
@@ -675,36 +665,37 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
                 )
                 continue
 
-            # convert back to real-world coordinates
-            point = self.voxel_map.grid_coords_to_xy(point_grid_coords)
-            if point is None:
-                print("[VOXEL MAP: sampling] ERR:", point, point_grid_coords)
-                continue
+            yield self.voxel_map.grid_coords_to_xy(outside_point)
+            # # convert back to real-world coordinates
+            # point = self.voxel_map.grid_coords_to_xy(point_grid_coords)
+            # if point is None:
+            #     print("[VOXEL MAP: sampling] ERR:", point, point_grid_coords)
+            #     continue
 
-            theta = math.atan2(
-                outside_point[1] - point_grid_coords[0, 1],
-                outside_point[0] - point_grid_coords[0, 0],
-            )
-            if debug:
-                print(f"{dist=}, {x=}, {y=}, {theta=}")
+            # theta = math.atan2(
+            #     outside_point[1] - point_grid_coords[0, 1],
+            #     outside_point[0] - point_grid_coords[0, 0],
+            # )
+            # if debug:
+            #     print(f"{dist=}, {x=}, {y=}, {theta=}")
 
-            # Ensure angle is in 0 to 2 * PI
-            if theta < 0:
-                theta += 2 * np.pi
+            # # Ensure angle is in 0 to 2 * PI
+            # if theta < 0:
+            #     theta += 2 * np.pi
 
-            xyt = torch.zeros(3)
-            xyt[:2] = point
-            xyt[2] = theta
+            # xyt = torch.zeros(3)
+            # xyt[:2] = point
+            # xyt[2] = theta
 
-            # Check to see if this point is valid
-            if verbose:
-                print("[VOXEL MAP: sampling] sampled", xyt)
-            if self.is_valid(xyt, debug=debug):
-                yield xyt
+            # # Check to see if this point is valid
+            # if verbose:
+            #     print("[VOXEL MAP: sampling] sampled", xyt)
+            # if self.is_valid(xyt, debug=debug):
+            #     yield xyt
 
-            tries += 1
-            if tries > max_tries:
-                break
+            # tries += 1
+            # if tries > max_tries:
+            #     break
         yield None
 
     def show(

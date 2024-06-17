@@ -2,9 +2,6 @@ import zmq
 import numpy as np
 from PIL import Image as PILImage
 
-from sensor_msgs.msg import Image
-from std_msgs.msg import Float32MultiArray,MultiArrayDimension
-
 from home_robot.agent.multitask.ok_robot_hw.utils.communication_utils import send_array, recv_array
 
 class ImagePublisher():
