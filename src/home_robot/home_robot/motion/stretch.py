@@ -623,7 +623,7 @@ class HelloStretchKinematics(BulletRobotModel):
 
     def fk(self, q=None, as_matrix=False) -> Tuple[np.ndarray, np.ndarray]:
         """forward kinematics"""
-        pose = self.get_link_pose(self.ee_link_name, q)
+        pose = self.get_link_pose(self._ee_link_name, q)
         if as_matrix:
             return to_matrix(*pose)
         return pose

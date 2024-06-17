@@ -115,7 +115,8 @@ def main(
 
     
     while True:
-        mode = input('select mode? E/N/S')
+        # mode = input('select mode? E/N/S')
+        mode = 'N'
         if mode == 'S':
             break
         if mode == 'E':
