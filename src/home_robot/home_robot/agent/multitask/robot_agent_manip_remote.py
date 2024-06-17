@@ -211,7 +211,7 @@ class RemoteRobotAgentManip:
         camera = RealSenseCamera(self.robot)
 
         time.sleep(2)
-        rotation, translation, _ = capture_and_process_image(
+        rotation, translation = capture_and_process_image(
             camera = camera,
             mode = 'place',
             obj = text,
@@ -231,22 +231,21 @@ class RemoteRobotAgentManip:
 
         # Placing the object
         move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
-        time.sleep(1.5)
-        self.manip_wrapper.move_to_position(gripper_pos=1)
+        self.manip_wrapper.move_to_position(gripper_pos = 0.35 / self.manip_wrapper.STRETCH_GRIPPER_MAX)
 
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
         self.manip_wrapper.move_to_position(lift_pos = self.manip_wrapper.robot.manip.get_joint_positions()[1] + 0.3)
-        self.manip_wrapper.move_to_position(wrist_roll = 2.5)
-        time.sleep(1.5)
-        self.manip_wrapper.move_to_position(wrist_roll = -2.5)
-        time.sleep(1.5)
+        self.manip_wrapper.move_to_position(wrist_roll = 3)
+        time.sleep(1)
+        self.manip_wrapper.move_to_position(wrist_roll = -3)
 
         # Wait for some time and shrink the arm back
-        self.manip_wrapper.move_to_position(gripper_pos=1, 
-                                lift_pos = 1.05,
-                                arm_pos = 0)
+        self.manip_wrapper.move_to_position(
+            lift_pos = 1.05,
+            arm_pos = 0)
         time.sleep(3)
         self.manip_wrapper.move_to_position(wrist_pitch=-1.57)
+        time.sleep(1)
 
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])

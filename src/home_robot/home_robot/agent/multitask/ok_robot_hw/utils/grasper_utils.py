@@ -127,7 +127,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     transformed_frame = cam2gripper_transform * dest_frame
 
     # Lifting the arm to high position as part of pregrasping position
-    robot.move_to_position(lift_pos = 1.1, head_pan = None, head_tilt = None)
+    robot.move_to_position(lift_pos = 1.05, head_pan = None, head_tilt = None)
     time.sleep(2)
 
     # Rotation for aligning Robot gripper frame to Model gripper frame
@@ -212,15 +212,15 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
 
     # Lifts the arm
     robot.move_to_position(lift_pos = 1.0)
-    time.sleep(2)
+    time.sleep(1)
 
     # Tucks the gripper so that while moving to place it wont collide with any obstacles
-    robot.move_to_position(arm_pos = 0)
-    time.sleep(2)
-    robot.move_to_position(wrist_pitch = 0.0, arm_pos = 0)
-    time.sleep(2)
-    robot.move_to_position(wrist_yaw  = 2.5, arm_pos = 0)
-    time.sleep(2)
+    robot.move_to_position(arm_pos = 0.01)
+    time.sleep(1)
+    robot.move_to_position(wrist_pitch = 0.0)
+    time.sleep(1)
+    robot.move_to_position(wrist_yaw  = 2.5)
+    time.sleep(1)
 
     # rotate the arm wrist onto the base
     if abs(robot.robot.manip.get_joint_positions()[3] - 2.5) > 0.1:
