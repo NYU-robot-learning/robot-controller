@@ -61,7 +61,7 @@ Frame = namedtuple(
 
 VALID_FRAMES = ["camera", "world"]
 
-DEFAULT_GRID_SIZE = [128, 128]
+DEFAULT_GRID_SIZE = [150, 150]
 
 logger = logging.getLogger(__name__)
 
@@ -698,7 +698,6 @@ class SparseVoxelMapVoxel(object):
             #     self.smooth_kernel,
             # )[0, 0].bool()
 
-        debug = True
         if debug:
             import matplotlib.pyplot as plt
 
@@ -725,7 +724,7 @@ class SparseVoxelMapVoxel(object):
             plt.imshow(explored.detach().cpu().numpy())
             plt.axis("off")
             plt.title("explored")
-            # plt.show()
+            plt.show()
 
         # Update cache
         self._map2d = (obstacles, explored)
@@ -841,11 +840,6 @@ class SparseVoxelMapVoxel(object):
         poses = [obs.camera_pose for obs in self.observations]
         add_camera_poses(fig, poses)
         return fig
-
-    def sample_explored(self) -> Optional[np.ndarray]:
-        """Return obstacle-free xy point in explored space"""
-        obstacles, explored = self.get_2d_map()
-        return self.sample_from_mask(~obstacles & explored)
 
     def sample_from_mask(self, mask: torch.Tensor) -> Optional[np.ndarray]:
         """Sample from any mask"""

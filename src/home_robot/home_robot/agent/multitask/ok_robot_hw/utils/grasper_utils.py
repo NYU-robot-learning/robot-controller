@@ -20,7 +20,7 @@ def capture_and_process_image(camera, mode, obj, socket, hello_robot):
     head_pan = INIT_HEAD_PAN
 
     while(retry_flag):
-        translation, rotation, depth, cropped, retry_flag = image_publisher.publish_image(obj, mode, head_tilt=head_tilt)
+        translation, rotation, depth, width, retry_flag = image_publisher.publish_image(obj, mode, head_tilt=head_tilt)
 
         print(f"retry flag : {retry_flag}")
         if (retry_flag == 1):
@@ -60,7 +60,10 @@ def capture_and_process_image(camera, mode, obj, socket, hello_robot):
     if mode == "place":
         translation = PyKDL.Vector(-translation[1], -translation[0], -translation[2])
 
-    return rotation, translation, depth
+    if mode == "pick":
+        return rotation, translation, depth, width
+    else:
+        return rotation, translation
 
 
 def move_to_point(robot, point, base_node, gripper_node, move_mode=1, pitch_rotation=0):
@@ -85,7 +88,7 @@ def move_to_point(robot, point, base_node, gripper_node, move_mode=1, pitch_rota
             move_mode=move_mode
         )
 
-def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height = 0.03, gripper_depth=0.03):
+def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height = 0.03, gripper_depth=0.03, gripper_width = 1):
     """
         rotation: Relative rotation of gripper pose w.r.t camera
         translation: Relative translation of gripper pose w.r.t camera
@@ -124,8 +127,8 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     transformed_frame = cam2gripper_transform * dest_frame
 
     # Lifting the arm to high position as part of pregrasping position
-    robot.move_to_position(lift_pos = 1.1, head_pan = None, head_tilt = None)
-    # time.sleep(2)
+    robot.move_to_position(lift_pos = 1.05, head_pan = None, head_tilt = None)
+    time.sleep(2)
 
     # Rotation for aligning Robot gripper frame to Model gripper frame
     rotation2_top = PyKDL.Rotation(0, 0, 1, 1, 0, 0, 0, -1, 0)
@@ -134,6 +137,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     final_rotation = transformed_frame.M * rotation2_top
     # print(f"final rotation - {final_rotation.GetRPY()}")
     print("Rotation wrist with sleep of 2s")
+    robot.move_to_position(gripper_pos = gripper_width)
     robot.move_to_pose(
             [0, 0, 0],
             [final_rotation.GetRPY()[0], final_rotation.GetRPY()[1], final_rotation.GetRPY()[2]],
@@ -149,7 +153,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     cam2base_transform, _, _ = robot.get_joint_transform(base_node, 'base_link')
     base_point = cam2base_transform * point
 
-    diff_value = (0.228 - gripper_depth - gripper_height) # 0.228 is the distance between link_Straight_gripper node and the gripper tip
+    diff_value = (0.227 - gripper_depth - gripper_height) # 0.227 is the distance between link_Straight_gripper node and the gripper tip
     transformed_point1[2] -= (diff_value)
     ref_diff = (diff_value)
 
@@ -204,19 +208,19 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
         diff = diff - dist
     
     # Now the gripper reached the grasping point and starts picking procedure
-    robot.pickup(abs(0))
+    robot.pickup(gripper_width)
 
     # Lifts the arm
-    robot.move_to_position(lift_pos = 1.1)
-    time.sleep(2)
+    robot.move_to_position(lift_pos = 1.0)
+    time.sleep(1)
 
     # Tucks the gripper so that while moving to place it wont collide with any obstacles
-    robot.move_to_position(arm_pos = 0)
-    time.sleep(2)
-    robot.move_to_position(wrist_pitch = 0.0, arm_pos = 0)
-    time.sleep(2)
-    robot.move_to_position(wrist_yaw  = 2.5, arm_pos = 0)
-    time.sleep(2)
+    robot.move_to_position(arm_pos = 0.01)
+    time.sleep(1)
+    robot.move_to_position(wrist_pitch = 0.0)
+    time.sleep(1)
+    robot.move_to_position(wrist_yaw  = 2.5)
+    time.sleep(1)
 
     # rotate the arm wrist onto the base
     if abs(robot.robot.manip.get_joint_positions()[3] - 2.5) > 0.1:

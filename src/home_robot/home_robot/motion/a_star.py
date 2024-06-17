@@ -2,7 +2,6 @@ import time
 from random import random
 from typing import Callable, List, Optional, Tuple, Set
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from home_robot.motion.base import PlanResult
@@ -56,6 +55,7 @@ class AStar():
         obs, exp = self.space.voxel_map.get_2d_map()
         print('up to date navigable map loaded')
         self._navigable = ~obs & exp
+        self.start_time = time.time()
 
     def point_is_occupied(self, x: int, y: int) -> bool:
         return not bool(self._navigable[x][y])
@@ -135,7 +135,7 @@ class AStar():
             return False
         return ((c[1] - b[1]) / (c[0] - b[0])) == ((b[1] - a[1]) / (b[0] - a[0]))
 
-    def clean_path(self, path: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    def clean_path(self, path) -> List[Tuple[int, int]]:
         """Cleans up the final path.
 
         This implements a simple algorithm where, given some current position,
@@ -154,7 +154,7 @@ class AStar():
         i = 0
         while i < len(path) - 1:
             for j in range(len(path) - 1, i, -1):
-               if self.is_in_line_of_sight(path[i], path[j]):
+               if self.is_in_line_of_sight(path[i][:2], path[j][:2]):
                    break
             else:
                j = i + 1
@@ -192,6 +192,7 @@ class AStar():
             The set of all reachable points
         """
 
+        self.reset()
         start_pt = self.get_unoccupied_neighbor(start_pt)
         if start_pt is None:
             return set()
@@ -215,7 +216,7 @@ class AStar():
         self,
         start_xy: Tuple[float, float],
         end_xy: Tuple[float, float],
-        remove_line_of_sight_points: bool = True,
+        remove_line_of_sight_points: bool = False,
     ) -> List[Tuple[float, float]]:
 
         start_pt, end_pt = self.to_pt(start_xy), self.to_pt(end_xy)
@@ -224,6 +225,7 @@ class AStar():
         # start_pt = self.get_unoccupied_neighbor(start_pt, end_pt)
         start_pt = self.get_unoccupied_neighbor(start_pt)
         end_pt = self.get_unoccupied_neighbor(end_pt, start_pt)
+        print('A* formally starts ', time.time() - self.start_time, ' seconds after path planning starts')
         if start_pt is None or end_pt is None:
             return None
 
@@ -284,7 +286,9 @@ class AStar():
                 print("[Planner] invalid goal")
             return PlanResult(False, reason = "[Planner] invalid goal")
         # Add start to the tree
+        print('Start running A* ', time.time() - self.start_time, ' seconds after path planning starts')
         waypoints = self.run_astar(start[:2], goal[:2]) 
+        print('Finish running A* ', time.time() - self.start_time, ' seconds after path planning starts')
 
         if waypoints is None:
             if verbose:
@@ -295,4 +299,5 @@ class AStar():
             theta = compute_theta(waypoints[i][0], waypoints[i][1], waypoints[i + 1][0], waypoints[i + 1][1])
             trajectory.append(Node([waypoints[i][0], waypoints[i][1], float(theta)]))
         trajectory.append(Node([waypoints[-1][0], waypoints[-1][1], goal[-1]]))
+        print('Finish computing theta ', time.time() - self.start_time, ' seconds after path planning starts')
         return PlanResult(True, trajectory = trajectory)

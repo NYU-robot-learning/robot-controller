@@ -22,6 +22,21 @@ from matplotlib import pyplot as plt
 # This VoxelizedPointCloud is exactly the same thing as that in home_robot.util.voxel, rewrite here just for easy debugging
 from voxel import VoxelizedPointcloud
 from voxel_map_localizer import VoxelMapLocalizer
+from home_robot.agent.multitask import get_parameters
+from home_robot.mapping.voxel import (
+    SparseVoxelMapVoxel as SparseVoxelMap,
+    SparseVoxelMapNavigationSpaceVoxel as SparseVoxelMapNavigationSpace,
+    plan_to_frontier,
+)
+from home_robot.motion import (
+    ConfigurationSpace,
+    PlanResult,
+    RRTConnect,
+    Shortcut,
+    SimplifyXYT,
+    AStar
+)
+from home_robot.motion.stretch import HelloStretchKinematics
 
 import datetime
 
@@ -144,7 +159,9 @@ class ImageProcessor:
             device = 'cpu'
         self.device = device
         self.pcd_path = pcd_path
+
         self.create_vision_model()
+        self.create_obstacle_map()
 
         self.img_socket = load_socket(img_port)
         self.text_socket = load_socket(text_port)
@@ -156,9 +173,58 @@ class ImageProcessor:
             self.img_thread.daemon = True
             self.img_thread.start()
 
+        self.visualization_lock = threading.Lock()
+
         # self.text_thread = threading.Thread(target=self._recv_text)
         # self.text_thread.daemon = True
         # self.text_thread.start()
+    
+    def create_obstacle_map(self):
+        print("- Load parameters")
+        parameters = get_parameters("/data/peiqi/robot-controller/src/robot_hw_python/configs/default.yaml")
+        self.default_expand_frontier_size = parameters["default_expand_frontier_size"]
+        self.voxel_map = SparseVoxelMap(
+            resolution=parameters["voxel_size"],
+            local_radius=parameters["local_radius"],
+            obs_min_height=parameters["obs_min_height"],
+            obs_max_height=parameters["obs_max_height"],
+            obs_min_density = parameters["obs_min_density"],
+            exp_min_density = parameters["exp_min_density"],
+            min_depth=parameters["min_depth"],
+            max_depth=parameters["max_depth"],
+            pad_obstacles=parameters["pad_obstacles"],
+            add_local_radius_points=parameters.get(
+                "add_local_radius_points", default=True
+            ),
+            remove_visited_from_obstacles=parameters.get(
+                "remove_visited_from_obstacles", default=False
+            ),
+            smooth_kernel_size=parameters.get("filters/smooth_kernel_size", -1),
+            use_median_filter=parameters.get("filters/use_median_filter", False),
+            median_filter_size=parameters.get("filters/median_filter_size", 5),
+            median_filter_max_error=parameters.get(
+                "filters/median_filter_max_error", 0.01
+            ),
+            use_derivative_filter=parameters.get(
+                "filters/use_derivative_filter", False
+            ),
+            derivative_filter_threshold=parameters.get(
+                "filters/derivative_filter_threshold", 0.5
+            )
+        )
+        self.space = SparseVoxelMapNavigationSpace(
+            self.voxel_map,
+            HelloStretchKinematics(urdf_path = '/data/peiqi/robot-controller/assets/hab_stretch/urdf'),
+            # step_size=parameters["step_size"],
+            rotation_step_size=parameters["rotation_step_size"],
+            dilate_frontier_size=parameters[
+                "dilate_frontier_size"
+            ],  # 0.6 meters back from every edge = 12 * 0.02 = 0.24
+            dilate_obstacle_size=parameters["dilate_obstacle_size"],
+        )
+
+        # Create a simple motion planner
+        self.planner = AStar(self.space)
 
     def create_vision_model(self):
         # self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
@@ -189,10 +255,90 @@ class ImageProcessor:
 
     def recv_text(self):
         text = self.text_socket.recv_string()
-        with self.voxel_map_lock:
-            point = self.voxel_map_localizer.localize_AonB(text)
-            print('\n', text, point, '\n')
-        send_array(self.text_socket, point)
+        self.text_socket.send_string('Text recevied, waiting for robot pose')
+        start_pose = recv_array(self.text_socket)
+
+        # Do visual grounding
+        if text != '':
+            with self.voxel_map_lock:
+                localized_point = self.voxel_map_localizer.localize_AonB(text)
+                print('\n', text, localized_point, '\n')
+            with self.visualization_lock:
+                point = self.sample_navigation(start_pose, localized_point)
+                plt.savefig(self.log + '/debug_' + text + '.png')
+                plt.cla()
+        # Do Frontier based exploration
+        else:
+            point = self.sample_frontier()
+            # plt.savefig(self.log + '/get_frontier_debug_' + str(self.obs_count) + '.jpg')
+
+        if point is None:
+            print('Unable to find any target point, some exception might happen')
+            send_array(self.text_socket, [])
+        else:
+            print('Target point is', point)
+            res = self.planner.plan(start_pose, point)
+            if res.success:
+                traj = [pt.state for pt in res.trajectory]
+                # If we are navigating to some object of interst, send (x, y, z) of 
+                # the object so that we can make sure the robot looks at the object after navigation
+                if text != '': 
+                    traj.append(np.asarray(localized_point))
+                send_array(self.text_socket, traj)
+            else:
+                print('[FAILURE]', res.reason)
+                send_array(self.text_socket, [])
+
+    def sample_navigation(self, start, point, max_tries = 10):
+        goal = self.space.sample_target_point(start, point, self.planner, max_tries)
+        if goal is not None:
+            print("Sampled Goal:", goal)
+            obstacles, explored = self.voxel_map.get_2d_map()
+            start_pt = self.planner.to_pt(start)
+            goal_pt = self.planner.to_pt(goal)
+            point_pt = self.planner.to_pt(point)
+            plt.scatter(start_pt[1], start_pt[0], s = 10)
+            plt.scatter(goal_pt[1], goal_pt[0], s = 10)
+            plt.scatter(point_pt[1], point_pt[0], s = 10)
+            plt.imshow(obstacles)
+        return goal
+
+        # target_grid = self.voxel_map.xy_to_grid_coords(point[:2]).int()
+        # obstacles, explored = self.voxel_map.get_2d_map()
+        # point_mask = torch.zeros_like(explored)
+        # point_mask[target_grid[0]: target_grid[0] + 2, target_grid[1]: target_grid[1] + 2] = True
+        # try_count = 0
+        # for goal in self.space.sample_near_mask(point_mask, radius_m=radius_m, debug = True):
+        #     goal = goal.cpu().numpy()
+        #     print("Sampled Goal:", goal)
+        #     goal_is_valid = self.space.is_valid(goal, verbose=False)
+        #     if verbose:
+        #         print(" Goal is valid:", goal_is_valid)
+        #     try_count += 1
+        #     if try_count > max_tries:
+        #         return None
+        #     if not goal_is_valid:
+        #         print(" -> resample goal.")
+        #         continue
+        #     return goal
+
+    def sample_frontier(self):
+        for goal in self.space.sample_closest_frontier(
+            [0, 0, 0], verbose=True, debug=False, expand_size=self.default_expand_frontier_size
+        ):
+            if goal is None:
+                return None
+            goal = goal.cpu().numpy()
+            print("Sampled Goal:", goal)
+            show_goal = np.zeros(3)
+            show_goal[:2] = goal[:2]
+            goal_is_valid = self.space.is_valid(goal)
+            print(" Goal is valid:", goal_is_valid)
+            if not goal_is_valid:
+                print(" -> resample goal.")
+                continue
+            return goal
+            
 
     def _recv_image(self):
         while True:
@@ -425,6 +571,76 @@ class ImageProcessor:
             else:
                 self.run_mask_clip(rgb, ~valid_depth, world_xyz)
 
+    def test_DBSCAN(self, text):
+        centroids, extends, similarity_max_list, target_points = self.voxel_map_localizer.find_clusters_for_A(text)
+        target_point = target_points[np.array(similarity_max_list).argmax()]
+        points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
+        # points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
+        # points = np.concatenate((points, target_point))
+        # rgb = np.concatenate((rgb / 255, np.array([[1, 0, 0] for _ in range(len(target_point))])))
+        if not os.path.exists('debug'):
+            os.mkdir('debug')
+        pcd = numpy_to_pcd(points, rgb / 255)
+        o3d.io.write_point_cloud('debug/debug.pcd', pcd)
+        pcd = numpy_to_pcd(target_point, np.ones((len(target_point), 3)))
+        o3d.io.write_point_cloud('debug/' + text + '.pcd', pcd)
+
+    # def visualize_res(self, text = 'red cup', threshold = [10, 50, 100, 500, 1000]):
+    #     points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
+    #     points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
+    #     rgb = rgb / 255
+    #     pcd = numpy_to_pcd(points, rgb)
+    #     if not os.path.exists(text):
+    #         os.mkdir(text)
+    #     o3d.io.write_point_cloud(text + '/debug.pcd', pcd)
+    #     alignments = self.voxel_map_localizer.find_alignment_over_model(text)
+    #     for k_A in threshold:
+    #         rgb[alignments[0].topk(k = k_A, dim = -1).indices.numpy()] = np.array([1, 0, 0])
+    #         pcd = numpy_to_pcd(points, rgb)
+    #         o3d.io.write_point_cloud(text + '/debug_' + str(k_A) + '.pcd', pcd)
+
+    # def visualize_hist(self, text = 'red cup'):
+    #     alignments = self.voxel_map_localizer.find_alignment_over_model(text)
+    #     # negatives = ['object', 'texture', 'stuff', 'thing']
+    #     # negative_alignments = self.voxel_map_localizer.find_alignment_over_model(negatives)
+    #     # alignments = (alignments.exp() / (negative_alignments.exp() + alignments.exp())).min(dim = 0).values
+    #     plt.title(text)
+    #     plt.hist(alignments.detach().numpy())
+    #     if not os.path.exists('debug'):
+    #         os.mkdir('debug')
+    #     plt.savefig('debug/' + text + '.jpg')
+    #     plt.cla()
+
+    # def visualize_cs(self, text, threshold = [0.1]):
+    #     # points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
+    #     # points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
+    #     # rgb = rgb / 255
+    #     # pcd = numpy_to_pcd(points, rgb)
+    #     # if not os.path.exists('debug1'):
+    #     #     os.mkdir('debug1')
+    #     # o3d.io.write_point_cloud('debug1' + '/debug.pcd', pcd)
+    #     # alignments = self.voxel_map_localizer.find_alignment_over_model(text)
+    #     # negatives = ['object', 'texture', 'stuff', 'thing']
+    #     # negative_alignments = self.voxel_map_localizer.find_alignment_over_model(negatives)
+    #     # alignments = (alignments.exp() / (negative_alignments.exp() + alignments.exp())).min(dim = 0).values
+    #     # for k_A in threshold:
+    #     #     rgb[alignments.detach().numpy() > k_A] = np.array([1, 0, 0])
+    #     #     pcd = numpy_to_pcd(points, rgb)
+    #     #     o3d.io.write_point_cloud('debug1' + '/debug_' + text + '_' + str(k_A) + '.pcd', pcd)
+
+    #     points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
+    #     points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
+    #     rgb = rgb / 255
+    #     pcd = numpy_to_pcd(points, rgb)
+    #     if not os.path.exists('debug'):
+    #         os.mkdir('debug')
+    #     o3d.io.write_point_cloud('debug' + '/debug.pcd', pcd)
+    #     alignments = self.voxel_map_localizer.find_alignment_over_model(text)
+    #     for k_A in threshold:
+    #         rgb[alignments[0].detach().numpy() > k_A] = np.array([1, 0, 0])
+    #         pcd = numpy_to_pcd(points, rgb)
+    #         o3d.io.write_point_cloud('debug' + '/debug_' + text + '_' + str(k_A) + '.pcd', pcd)
+
     def process_rgbd_images(self, data):
         if not os.path.exists(self.log):
             os.mkdir(self.log)
@@ -464,9 +680,34 @@ class ImageProcessor:
         else:
             self.run_mask_clip(rgb, ~valid_depth, world_xyz)
 
+        self.voxel_map.add(
+            camera_pose = torch.Tensor(pose), 
+            rgb = torch.Tensor(rgb).permute(1, 2, 0), 
+            depth = torch.Tensor(depth), 
+            camera_K = torch.Tensor(intrinsics)
+        )
+        obs, exp = self.voxel_map.get_2d_map()
+        with self.visualization_lock:
+            plt.subplot(2, 1, 1)
+            plt.imshow(obs.detach().cpu().numpy())
+            plt.title("obstacles")
+            plt.axis("off")
+            plt.subplot(2, 1, 2)
+            plt.imshow(exp.detach().cpu().numpy())
+            plt.title("explored")
+            plt.axis("off")
+            plt.savefig(self.log + '/debug' + str(self.obs_count) + '.jpg')
+            plt.cla()
+
 if __name__ == "__main__":
     imageProcessor = ImageProcessor(pcd_path = None)
-    # imageProcessor = ImageProcessor(pcd_path = 'debug_2024-05-15_14-18-22/memory.pt', navigation_only = True)   
+    # imageProcessor = ImageProcessor(pcd_path = 'debug_2024-06-02_18-20-46/memory.pt', navigation_only = True)  
+    # for text in ['red cup', 'red bowl', 'green bowl', 'blue whiteboard care bottle', 'white table', 'coffee machine', 'sink', 'microwave', 'orange tape', 'black chair', 'pink spray', 'purple moov body spray']:
+    #     print(text)
+        # imageProcessor.visualize_res(text = text) 
+        # imageProcessor.visualize_hist(text = text)
+        # imageProcessor.visualize_cs(text = text)
+        # imageProcessor.test_DBSCAN(text = text)
     try:  
         while True:
             imageProcessor.recv_text()
