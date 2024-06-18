@@ -527,10 +527,9 @@ class RobotAgentManip:
         self.manip_wrapper.move_to_position(wrist_roll = -3)
 
         # Wait for some time and shrink the arm back
-        time.sleep(4)
-        self.manip_wrapper.move_to_position(gripper_pos=1, 
-                                lift_pos = 1.05,
-                                arm_pos = 0)
+        self.manip_wrapper.move_to_position(
+            lift_pos = 1.05,
+            arm_pos = 0)
         time.sleep(3)
         self.manip_wrapper.move_to_position(wrist_pitch=-1.57)
         time.sleep(1)

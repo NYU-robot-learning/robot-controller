@@ -135,9 +135,9 @@ class HelloRobot:
             target_state[5] = wrist_roll    
         
         # Actual Movement
-        # print('Target Position', target_state)
+        print('Target Position', target_state)
         self.robot.manip.goto_joint_positions(target_state, relative = False)
-        # print('Actual location', self.robot.manip.get_joint_positions())
+        print('Actual location', self.robot.manip.get_joint_positions())
 
         # Head state update and Movement
         target_head_pan, target_head_tilt = self.robot.head.get_pan_tilt()
