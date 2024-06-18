@@ -216,7 +216,7 @@ class AStar():
         self,
         start_xy: Tuple[float, float],
         end_xy: Tuple[float, float],
-        remove_line_of_sight_points: bool = False,
+        remove_line_of_sight_points: bool = True,
     ) -> List[Tuple[float, float]]:
 
         start_pt, end_pt = self.to_pt(start_xy), self.to_pt(end_xy)
