@@ -41,6 +41,8 @@ import os
 import cv2
 import time
 
+from home_robot.utils.point_cloud import numpy_to_pcd
+
 Frame = namedtuple(
     "Frame",
     [
@@ -59,7 +61,7 @@ Frame = namedtuple(
 
 VALID_FRAMES = ["camera", "world"]
 
-DEFAULT_GRID_SIZE = [512, 512]
+DEFAULT_GRID_SIZE = [150, 150]
 
 logger = logging.getLogger(__name__)
 
@@ -105,17 +107,18 @@ class SparseVoxelMapVoxel(object):
 
     def __init__(
         self,
-        resolution: float = 0.01,
+        resolution: float = 0.1,
         feature_dim: int = 3,
         grid_size: Tuple[int, int] = None,
-        grid_resolution: float = 0.05,
+        grid_resolution: float = 0.1,
         obs_min_height: float = 0.1,
-        obs_max_height: float = 1.8,
+        obs_max_height: float = 1.5,
         obs_min_density: float = 50,
+        exp_min_density: float = 5,
         smooth_kernel_size: int = 2,
         add_local_radius_points: bool = True,
         remove_visited_from_obstacles: bool = False,
-        local_radius: float = 0.15,
+        local_radius: float = 0.8,
         min_depth: float = 0.25,
         max_depth: float = 2.0,
         pad_obstacles: int = 0,
@@ -126,6 +129,7 @@ class SparseVoxelMapVoxel(object):
         median_filter_max_error: float = 0.01,
         use_derivative_filter: bool = False,
         derivative_filter_threshold: float = 0.5,
+        point_update_threshold: float = 0.9,
     ):
         """
         Args:
@@ -139,6 +143,7 @@ class SparseVoxelMapVoxel(object):
         self.obs_min_height = obs_min_height
         self.obs_max_height = obs_max_height
         self.obs_min_density = obs_min_density
+        self.exp_min_density = exp_min_density
 
         # Smoothing kernel params
         self.smooth_kernel_size = smooth_kernel_size
@@ -161,6 +166,7 @@ class SparseVoxelMapVoxel(object):
         # Derivative filter params
         self.use_derivative_filter = use_derivative_filter
         self.derivative_filter_threshold = derivative_filter_threshold
+        self.point_update_threshold = point_update_threshold
 
         self.grid_resolution = grid_resolution
         self.voxel_resolution = resolution
@@ -402,8 +408,29 @@ class SparseVoxelMapVoxel(object):
 
         # TODO: weights could also be confidence, inv distance from camera, etc
         if world_xyz.nelement() > 0:
-            self.voxel_pcd.clear_points(depth, camera_K, camera_pose)
+            # self.voxel_pcd.clear_points(depth, camera_K, camera_pose)
+            # pc_xyz, pc_rgb = self.get_xyz_rgb()
+            # if pc_rgb is not None:
+            #     print('Writing after clearing', self._seq)
+            #     pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
+            #     open3d.io.write_point_cloud('debug3/debug_1_' + str(self._seq) + '.pcd', pcd)
+            #     print('Finish writing')
+            selected_indices = torch.randperm(len(world_xyz))[:int((1 - self.point_update_threshold) * len(world_xyz))]
+            if len(selected_indices) == 0:
+                return
+            if world_xyz is not None:
+                world_xyz = world_xyz[selected_indices]
+            if feats is not None:
+                feats = feats[selected_indices]
+            if rgb is not None:
+                rgb = rgb[selected_indices]
             self.voxel_pcd.add(world_xyz, features=feats, rgb=rgb, weights=None)
+            # pc_xyz, pc_rgb = self.get_xyz_rgb()
+            # if pc_rgb is not None:
+            #     print('Writing after adding', self._seq)
+            #     pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
+            #     open3d.io.write_point_cloud('debug3/debug_2_' + str(self._seq) + '.pcd', pcd)
+            #     print('Finish writing')
 
         if self._add_local_radius_points:
             # TODO: just get this from camera_pose?
@@ -619,7 +646,7 @@ class SparseVoxelMapVoxel(object):
         voxels = scatter3d(xyz, counts, grid_size)
 
         # Compute the obstacle voxel grid based on what we've seen
-        obstacle_voxels = voxels[:, :, min_height:]
+        obstacle_voxels = voxels[:, :, min_height:max_height]
         obstacles_soft = torch.sum(obstacle_voxels, dim=-1)
         obstacles = obstacles_soft > self.obs_min_density
 
@@ -639,8 +666,8 @@ class SparseVoxelMapVoxel(object):
 
         # Add explored radius around the robot, up to min depth
         # TODO: make sure lidar is supported here as well; if we do not have lidar assume a certain radius is explored
-        explored_soft += self._visited
-        explored = explored_soft > 0
+        explored = explored_soft > self.exp_min_density
+        explored = (torch.zeros_like(explored) + self._visited).to(torch.bool) | explored
 
         # Also shrink the explored area to build more confidence
         # That we will not collide with anything while moving around
@@ -649,7 +676,6 @@ class SparseVoxelMapVoxel(object):
         #        explored.float().unsqueeze(0).unsqueeze(0),
         #        self.dilate_obstacles_kernel,
         #    )[0, 0].bool()
-
         if self.smooth_kernel_size > 0:
             # Opening and closing operations here on explore
             explored = binary_erosion(
@@ -657,21 +683,21 @@ class SparseVoxelMapVoxel(object):
                     explored.float().unsqueeze(0).unsqueeze(0), self.smooth_kernel
                 ),
                 self.smooth_kernel,
-            )  # [0, 0].bool()
+            ) #[0, 0].bool()
             explored = binary_dilation(
                 binary_erosion(explored, self.smooth_kernel),
                 self.smooth_kernel,
             )[0, 0].bool()
 
             # Obstacles just get dilated and eroded
-            obstacles = binary_erosion(
-                binary_dilation(
-                    obstacles.float().unsqueeze(0).unsqueeze(0), self.smooth_kernel
-                ),
-                self.smooth_kernel,
-            )[0, 0].bool()
+            # This might influence the obstacle size
+            # obstacles = binary_erosion(
+            #     binary_dilation(
+            #         obstacles.float().unsqueeze(0).unsqueeze(0), self.smooth_kernel
+            #     ),
+            #     self.smooth_kernel,
+            # )[0, 0].bool()
 
-        debug = True
         if debug:
             import matplotlib.pyplot as plt
 
@@ -698,7 +724,7 @@ class SparseVoxelMapVoxel(object):
             plt.imshow(explored.detach().cpu().numpy())
             plt.axis("off")
             plt.title("explored")
-            # plt.show()
+            plt.show()
 
         # Update cache
         self._map2d = (obstacles, explored)
@@ -719,7 +745,7 @@ class SparseVoxelMapVoxel(object):
         ):
             return None
         else:
-            return grid_xy
+            return grid_xy.int()
 
     def plan_to_grid_coords(
         self, plan_result: PlanResult
@@ -815,11 +841,6 @@ class SparseVoxelMapVoxel(object):
         add_camera_poses(fig, poses)
         return fig
 
-    def sample_explored(self) -> Optional[np.ndarray]:
-        """Return obstacle-free xy point in explored space"""
-        obstacles, explored = self.get_2d_map()
-        return self.sample_from_mask(~obstacles & explored)
-
     def sample_from_mask(self, mask: torch.Tensor) -> Optional[np.ndarray]:
         """Sample from any mask"""
         valid_indices = torch.nonzero(mask, as_tuple=False)
@@ -849,12 +870,14 @@ class SparseVoxelMapVoxel(object):
         if grid_xy is None:
             # Conversion failed - probably out of bounds
             return False
-        if robot is not None:
-            # TODO: check against robot geometry
-            raise NotImplementedError(
-                "not currently checking against robot base geometry"
-            )
-        return True
+        navigable = ~obstacles & explored
+        return bool(navigable[grid_xy[0], grid_xy[1]])
+        # if robot is not None:
+        #     # TODO: check against robot geometry
+        #     raise NotImplementedError(
+        #         "not currently checking against robot base geometry"
+        #     )
+        # return True
 
     def _get_boxes_from_points(
         self,

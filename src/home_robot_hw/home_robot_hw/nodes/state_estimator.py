@@ -10,7 +10,7 @@ from typing import Optional
 
 import numpy as np
 import rospy
-import sophus as sp
+import sophuspy as sp
 import tf2_ros
 from geometry_msgs.msg import (
     Pose,

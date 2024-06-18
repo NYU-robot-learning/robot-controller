@@ -40,8 +40,14 @@ from torch_geometric.nn.pool.voxel_grid import voxel_grid
 from torch_geometric.utils import add_self_loops, scatter
 
 def project_points(points_3d, K, pose):
+    if not isinstance(K, torch.Tensor):
+        K = torch.Tensor(K)
+    K = K.to(points_3d)
+    if not isinstance(pose, torch.Tensor):
+        pose = torch.Tensor(pose)
+    pose = pose.to(points_3d)
     # Convert points to homogeneous coordinates
-    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1))))
+    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1)).to(points_3d)))
 
     # Transform points into camera coordinate system
     points_camera_homogeneous = torch.matmul(torch.linalg.inv(pose), points_3d_homogeneous.T).T
@@ -55,7 +61,10 @@ def project_points(points_3d, K, pose):
 
 def get_depth_values(points_3d, pose):
     # Convert points to homogeneous coordinates
-    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1))))
+    if not isinstance(pose, torch.Tensor):
+        pose = torch.Tensor(pose)
+    pose = pose.to(points_3d)
+    points_3d_homogeneous = torch.hstack((points_3d, torch.ones((points_3d.shape[0], 1)).to(points_3d)))
 
     # Transform points into camera coordinate system
     points_camera_homogeneous = torch.matmul(torch.linalg.inv(pose), points_3d_homogeneous.T).T
@@ -139,17 +148,23 @@ class VoxelizedPointcloud:
                         # the points are projected to the image frame but is blocked by some obstacles
                         depth[valid_xys[:, 0], valid_xys[:, 1]] < (proj_depth - 0.1), 
                         # the points are projected to the image frame but they are behind camera
-                        depth[valid_xys[:, 0], valid_xys[:, 1]] < -0.1],
+                        depth[valid_xys[:, 0], valid_xys[:, 1]] < -0.1,
                         # depth is too large
-                        depth[valid_xys[:, 0], valid_xys[:, 1]] > 2
+                        # depth[valid_xys[:, 0], valid_xys[:, 1]] > 2
+                    ],
                     dim = 0
                 ),
                 dim = 0)
         
-            voxel_pcd._points = voxel_pcd._points[indices]
-            voxel_pcd._features = voxel_pcd._features[indices]
-            voxel_pcd._weights= voxel_pcd._weights[indices]
-            voxel_pcd._rgb = voxel_pcd._rgb[indices]
+            print('Clearing non valid points...')
+            print('Removing ' + str((~indices).sum()) + ' points.')
+            self._points = self._points[indices]
+            if self._features is not None:
+                self._features = self._features[indices]
+            if self._weights is not None:
+                self._weights= self._weights[indices]
+            if self._rgb is not None:
+                self._rgb = self._rgb[indices]
 
     def add(
         self,

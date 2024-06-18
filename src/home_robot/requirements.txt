@@ -31,3 +31,12 @@ atomicwrites
 git+https://github.com/facebookresearch/pytorch3d.git
 lxml
 transforms3d
+zmq
+git+https://github.com/facebookresearch/segment-anything.git
+transformers
+wget
+setuptools==69.5.1
+loguru
+sophuspy==0.1.2
+sentencepiece
+protobuf

@@ -174,6 +174,7 @@ class RobotAgentVoxel:
 
     def update(self):
         """Step the data collector. Get a single observation of the world. Remove bad points, such as those from too far or too near the camera. Update the 3d world representation."""
+        self.robot.head.set_pan_tilt(pan = 0., tilt = np.random.uniform(-0.6, -0.4))
         obs = self.robot.get_observation()
         # self.image_sender.send_images(obs)
         self.obs_history.append(obs)
@@ -221,7 +222,7 @@ class RobotAgentVoxel:
         visualize: bool = False,
         task_goal: str = None,
         go_home_at_end: bool = False,
-        go_to_start_pose: bool = True,
+        go_to_start_pose: bool = False,
         show_goal: bool = False,
     ):
         """Go through exploration. We use the voxel_grid map created by our collector to sample free space, and then use our motion planner (RRT for now) to get there. At the end, we plan back to (0,0,0).
@@ -333,9 +334,9 @@ class RobotAgentVoxel:
 
             # Append latest observations
             # self.update()
-            self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
+            # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
             self.rotate_in_place()
-            self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
+            # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
             self.rotate_in_place()
             # self.save_svm("", filename=f"debug_svm_{i:03d}.pkl")
             if visualize:
@@ -423,9 +424,9 @@ class RobotAgentVoxel:
             )
         else:
             print('Navigation Failure!')
-        self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
+        # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.6)
         self.rotate_in_place()
-        self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
+        # self.robot.head.set_pan_tilt(pan = 0, tilt = -0.3)
         self.rotate_in_place()
 
 def send_array(socket, A, flags=0, copy=True, track=False):

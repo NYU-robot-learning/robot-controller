@@ -13,7 +13,6 @@ import click
 import matplotlib.pyplot as plt
 import numpy as np
 import open3d
-import rospy
 import torch
 from PIL import Image
 
@@ -23,8 +22,8 @@ from home_robot.agent.multitask import RobotAgentVoxel as RobotAgent
 
 # Chat and UI tools
 from home_robot.utils.point_cloud import numpy_to_pcd, show_point_cloud
-from home_robot_hw.remote import StretchClient
-
+from robot_hw_python.remote import StretchClient
+import rclpy
 import threading
 
 
@@ -62,7 +61,7 @@ def main(
         show_intermediate_maps(bool): show maps as we explore
         random_goals(bool): randomly sample frontier goals instead of looking for closest
     """
-
+    rclpy.init()
     current_datetime = datetime.datetime.now()
     formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
     output_pcd_filename = output_filename + "_" + formatted_datetime + ".pcd"
@@ -86,11 +85,12 @@ def main(
         robot, parameters
     )
 
+    # robot1 = StretchClient()
     def send_image():
         while True:
-            if robot.nav._is_enabled:
-                obs = robot.get_observation()
-                demo.image_sender.send_images(obs)
+            # obs = robot1.get_observation()
+            obs = robot.get_observation()
+            demo.image_sender.send_images(obs)
 
     img_thread = threading.Thread(target=send_image)
     img_thread.daemon = True
@@ -109,7 +109,7 @@ def main(
         demo.run_exploration(
             rate,
             manual_wait,
-            explore_iter=parameters["exploration_steps"],
+            explore_iter=15,
             task_goal=object_to_find,
             go_home_at_end=navigate_home,
             visualize=show_intermediate_maps,

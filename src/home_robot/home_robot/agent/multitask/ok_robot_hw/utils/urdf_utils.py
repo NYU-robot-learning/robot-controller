@@ -1,5 +1,5 @@
 import numpy as np
-import PyKDL
+# import PyKDL
 
 def euler_to_quat(r, p, y):
     sr, sp, sy = np.sin(r/2.0), np.sin(p/2.0), np.sin(y/2.0)
@@ -10,10 +10,13 @@ def euler_to_quat(r, p, y):
             cr*cp*cy + sr*sp*sy]
 
 def urdf_joint_to_kdl_joint(jnt):
-    kdl = PyKDL
+    import PyKDL as kdl
     origin_frame = urdf_pose_to_kdl_frame(jnt.origin)
     if jnt.joint_type == 'fixed':
-        return kdl.Joint(jnt.name, getattr(kdl.Joint, 'None'))
+        if hasattr(kdl.Joint, 'Fixed'):
+            return kdl.Joint(jnt.name, kdl.Joint.Fixed)
+        else:
+            return kdl.Joint(jnt.name, getattr(kdl.Joint, 'None'))
     axis = kdl.Vector(*jnt.axis)
     if jnt.joint_type == 'revolute':
         return kdl.Joint(jnt.name, origin_frame.p,
@@ -28,7 +31,7 @@ def urdf_joint_to_kdl_joint(jnt):
     return kdl.Joint(jnt.name, kdl.Joint.Fixed)
 
 def urdf_pose_to_kdl_frame(pose):
-    kdl = PyKDL
+    import PyKDL as kdl
     pos = [0., 0., 0.]
     rot = [0., 0., 0.]
     if pose is not None:
@@ -40,7 +43,7 @@ def urdf_pose_to_kdl_frame(pose):
                      kdl.Vector(*pos))
 
 def urdf_inertial_to_kdl_rbi(i):
-    kdl = PyKDL
+    import PyKDL as kdl
     origin = urdf_pose_to_kdl_frame(i.origin)
     rbi = kdl.RigidBodyInertia(i.mass, origin.p,
                                kdl.RotationalInertia(i.inertia.ixx,
@@ -54,7 +57,7 @@ def urdf_inertial_to_kdl_rbi(i):
 ##
 # Returns a PyKDL.Tree generated from a urdf_parser_py.urdf.URDF object.
 def kdl_tree_from_urdf_model(urdf):
-    kdl = PyKDL
+    import PyKDL as kdl
     root = urdf.get_root()
     print(f"root -> {root}")
     tree = kdl.Tree(root)

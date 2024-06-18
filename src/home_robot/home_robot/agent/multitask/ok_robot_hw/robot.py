@@ -1,9 +1,9 @@
 import numpy as np
-import PyKDL
+# import PyKDL
 import sys
 import os
 
-from urdf_parser_py.urdf import URDF
+# from urdf_parser_py.urdf import URDF
 from scipy.spatial.transform import Rotation as R
 import math
 import time
@@ -22,9 +22,9 @@ class HelloRobot:
         robot,
         stretch_client_urdf_file = 'assets/hab_stretch/urdf',
         gripper_threshold = 7.0, 
-        stretch_gripper_max = 0.3, 
+        stretch_gripper_max = 0.64, 
         stretch_gripper_min = 0, 
-        end_link = GRIPPER_MID_NODE
+        end_link = 'link_straight_gripper'
     ):
         self.STRETCH_GRIPPER_MAX = stretch_gripper_max
         self.STRETCH_GRIPPER_MIN = stretch_gripper_min
@@ -57,6 +57,8 @@ class HelloRobot:
         """
             Kdl Setup for forward and Inverse Kinematics
         """
+        import PyKDL
+        from urdf_parser_py.urdf import URDF
         self.joints = {'joint_fake':0}
         self.head_joints = {'joint_fake':0}
         
@@ -133,7 +135,9 @@ class HelloRobot:
             target_state[5] = wrist_roll    
         
         # Actual Movement
+        print('Target Position', target_state)
         self.robot.manip.goto_joint_positions(target_state, relative = False)
+        print('Actual location', self.robot.manip.get_joint_positions())
 
         # Head state update and Movement
         target_head_pan, target_head_tilt = self.robot.head.get_pan_tilt()
@@ -144,22 +148,24 @@ class HelloRobot:
         self.robot.head.set_pan_tilt(tilt = target_head_tilt, pan = target_head_pan)
         time.sleep(0.7)
 
-    def pickup(self, depth):
+    def pickup(self, width):
         """
             Code for grasping the object
             Gripper closes gradually until it encounters resistence
         """
-        next_gripper_pos = 0.25
+        next_gripper_pos = width
         while True:
-            self.robot.manip.move_gripper(next_gripper_pos)
+            self.robot.manip.move_gripper(next_gripper_pos * self.STRETCH_GRIPPER_MAX)
             curr_gripper_pose = self.robot.manip.get_gripper_position()
-            if next_gripper_pos == -0.2 or (curr_gripper_pose > next_gripper_pos + 0.01):
+            # print('Robot means to move gripper to', next_gripper_pos * self.STRETCH_GRIPPER_MAX)
+            # print('Robot actually moves gripper to', curr_gripper_pose)
+            if next_gripper_pos == -1 or (curr_gripper_pose > next_gripper_pos * self.STRETCH_GRIPPER_MAX + 0.015):
                 break
             
             if next_gripper_pos > 0:
-                next_gripper_pos -= 0.05
+                next_gripper_pos -= 0.25
             else: 
-                next_gripper_pos = -0.2
+                next_gripper_pos = -1
 
     def updateJoints(self):
         """
@@ -216,12 +222,12 @@ class HelloRobot:
             target1 = [0 for _ in range(6)]
             target1[1] = target_state[1] - state[1]
             self.robot.manip.goto_joint_positions(target1, relative=True)
-            time.sleep(0.7)
+            time.sleep(1)
 
         # print(f"current state {state}")
         # print(f"target state {target_state}")
         self.robot.manip.goto_joint_positions(target_state)
-        time.sleep(0.7)
+        time.sleep(1)
 
         #NOTE: below code is to fix the pitch drift issue in current hello-robot. Remove it if there is no pitch drift issue
         OVERRIDE_STATES['wrist_pitch'] = joints['joint_wrist_pitch']
@@ -233,6 +239,7 @@ class HelloRobot:
 
             Mainly used for transforming co-ordinates from camera frame to gripper frame.
         '''
+        import PyKDL
 
         # Intializing chain -> maintains list of nodes from base link to corresponding nodes
         chain1 = self.kdl_tree.getChain('base_link', node1)
@@ -278,6 +285,7 @@ class HelloRobot:
         """
             Function to move the gripper to a desired translation and rotation
         """
+        import PyKDL
         translation = [translation_tensor[0], translation_tensor[1], translation_tensor[2]]
         rotation = rotational_tensor
         # print('translation and rotation', translation_tensor, rotational_tensor)
@@ -285,6 +293,8 @@ class HelloRobot:
         self.updateJoints()
         for joint_index in range(self.joint_array.rows()):
             self.joint_array[joint_index] = self.joints[self.joint_list[joint_index]]
+        # print('self.joints', self.joints)
+        # print('self.joint_array', self.joint_array)
 
         curr_pose = PyKDL.Frame() # Current pose of gripper in base frame
         del_pose = PyKDL.Frame() # Relative Movement of gripper 

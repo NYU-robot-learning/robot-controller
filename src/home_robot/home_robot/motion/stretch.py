@@ -44,7 +44,7 @@ STRETCH_POSTNAV_Q = np.array(
         0,  # x
         0,  # y
         0,  # theta
-        0.78,  # lift
+        0.4,  # lift
         0.01,  # arm
         0.0,  # gripper rpy
         0.0,  # wrist roll
@@ -111,7 +111,7 @@ STRETCH_NAVIGATION_Q = np.array(
         0,  # x
         0,  # y
         0,  # theta
-        0.78,  # lift
+        0.4,  # lift
         0.01,  # arm
         0.0,  # gripper rpy
         0.0,  # wrist roll
