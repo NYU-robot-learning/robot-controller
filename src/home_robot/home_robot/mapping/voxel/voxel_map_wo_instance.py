@@ -367,7 +367,7 @@ class SparseVoxelMapNavigationSpaceVoxel(XYT):
         selected_targets = torch.stack([xs, ys], dim = -1) \
             [torch.linalg.norm( \
                 (torch.stack([xs, ys], dim = -1) - torch.tensor([target_x, target_y])).float(), dim = -1 \
-            ).topk(k = max_tries, largest = False).indices]
+            ).topk(k = len(xs), largest = False).indices]
 
         # TODO: was this:
         # expanded_mask = expanded_mask & less_explored & ~obstacles
