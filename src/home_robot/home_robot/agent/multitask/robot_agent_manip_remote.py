@@ -55,6 +55,7 @@ class RemoteRobotAgentManip:
         log_dir: str = 'debug'
     ):
         print('------------------------YOU ARE NOW RUNNING PEIQI CODES V3-----------------')
+        self.re = re
         self.log_dir = log_dir
         if isinstance(parameters, Dict):
             self.parameters = Parameters(**parameters)
@@ -68,7 +69,7 @@ class RemoteRobotAgentManip:
             end_link = "link_straight_gripper"
         else:
             stretch_gripper_max = 0.64
-            end_link = "link_gripper_s3_body"
+            end_link = "link_straight_gripper"
         self.transform_node = end_link
         self.manip_wrapper = Manipulation_Wrapper(self.robot, stretch_gripper_max = stretch_gripper_max, end_link = end_link)
         self.robot.move_to_nav_posture()
@@ -180,6 +181,9 @@ class RemoteRobotAgentManip:
     def navigate(self, text):
         start = self.robot.get_base_pose()
         trajectory = self.image_sender.query_text(text, start)
+
+        if input('Do you want to run navigation? Y/N') == 'N':
+            return
         
         if len(trajectory) > 0:
             self.robot.execute_trajectory(
@@ -325,7 +329,7 @@ def recv_array(socket, flags=0, copy=True, track=False):
 class ImageSender:
     def __init__(self, 
         stop_and_photo = False, 
-        ip = '100.108.67.79', 
+        ip = '172.24.71.227', 
         image_port = 5555,
         text_port = 5556,
         manip_port = 5557,

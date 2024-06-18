@@ -115,6 +115,7 @@ def main(
             )
         else:
             robot.move_to_nav_posture()
+            robot.head.look_front()
             robot.switch_to_navigation_mode()
             text = input('Enter object name: ')
             point = demo.navigate(text)
@@ -133,6 +134,7 @@ def main(
             theta = compute_tilt(camera_xyz, point)
             demo.manipulate(text, theta)
             
+            robot.head.look_front()
             robot.switch_to_navigation_mode()
             if input('You want to run placing: y/n') == 'n':
                 continue
