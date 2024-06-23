@@ -289,18 +289,19 @@ class ImageProcessor:
                 print('[FAILURE]', res.reason)
                 send_array(self.text_socket, [])
 
-    def sample_navigation(self, start, point, max_tries = 10):
+    def sample_navigation(self, start, point, max_tries = 25):
         goal = self.space.sample_target_point(start, point, self.planner, max_tries)
+        print("point:", point, "goal:", goal)
+        obstacles, explored = self.voxel_map.get_2d_map()
+        plt.cla()
+        start_pt = self.planner.to_pt(start)
+        plt.scatter(start_pt[1], start_pt[0], s = 10)
+        point_pt = self.planner.to_pt(point)
+        plt.scatter(point_pt[1], point_pt[0], s = 10)
         if goal is not None:
-            print("Sampled Goal:", goal)
-            obstacles, explored = self.voxel_map.get_2d_map()
-            start_pt = self.planner.to_pt(start)
             goal_pt = self.planner.to_pt(goal)
-            point_pt = self.planner.to_pt(point)
-            plt.scatter(start_pt[1], start_pt[0], s = 10)
             plt.scatter(goal_pt[1], goal_pt[0], s = 10)
-            plt.scatter(point_pt[1], point_pt[0], s = 10)
-            plt.imshow(obstacles)
+        plt.imshow(self.planner._navigable)
         return goal
 
         # target_grid = self.voxel_map.xy_to_grid_coords(point[:2]).int()
@@ -535,6 +536,52 @@ class ImageProcessor:
                                     rgb = valid_rgb,
                                     weights = weights)
 
+    def load(self, log, number):
+        print('Loading semantic memory')
+        self.voxel_map_localizer.voxel_pcd = torch.load(log + '/memory.pt')
+        print('Finish oading semantic memory')
+        for i in range(1, number + 1):
+            rgb = np.load(log + '/rgb' + str(i) + '.npy')
+            depth = np.load(log + '/depth' + str(i) + '.npy')
+            intrinsics = np.load(log + '/intrinsics' + str(i) + '.npy')
+            pose = np.load(log + '/pose' + str(i) + '.npy')
+            world_xyz = get_xyz(depth, pose, intrinsics).squeeze(0)
+
+            rgb, depth = torch.from_numpy(rgb), torch.from_numpy(depth)
+            rgb = rgb.permute(2, 0, 1).to(torch.uint8)
+
+            median_depth = torch.from_numpy(
+                scipy.ndimage.median_filter(depth, size=5)
+            )
+            median_filter_error = (depth - median_depth).abs()
+            valid_depth = torch.logical_and(depth < self.max_depth, depth > self.min_depth)
+            valid_depth = (
+                valid_depth
+                & (median_filter_error < 0.01).bool()
+            )
+
+            self.voxel_map.add(
+                camera_pose = torch.Tensor(pose), 
+                rgb = torch.Tensor(rgb).permute(1, 2, 0), 
+                depth = torch.Tensor(depth), 
+                camera_K = torch.Tensor(intrinsics)
+            )
+            obs, exp = self.voxel_map.get_2d_map()
+            with self.visualization_lock:
+                plt.subplot(2, 1, 1)
+                plt.imshow(obs.detach().cpu().numpy())
+                plt.title("obstacles")
+                plt.axis("off")
+                plt.subplot(2, 1, 2)
+                plt.imshow(exp.detach().cpu().numpy())
+                plt.title("explored")
+                plt.axis("off")
+                if not os.path.exists(self.log):
+                    os.mkdir(self.log)
+                plt.savefig(self.log + '/debug' + str(self.obs_count) + '.jpg')
+                plt.cla()
+        print('Finish building obstacle map')
+
     def debug(self, log, number):
         for i in range(number):
             if i % 20 == 0:
@@ -701,6 +748,7 @@ class ImageProcessor:
 
 if __name__ == "__main__":
     imageProcessor = ImageProcessor(pcd_path = None)
+    # imageProcessor.load('debug_2024-06-17_21-08-18', 96)
     # imageProcessor = ImageProcessor(pcd_path = 'debug_2024-06-02_18-20-46/memory.pt', navigation_only = True)  
     # for text in ['red cup', 'red bowl', 'green bowl', 'blue whiteboard care bottle', 'white table', 'coffee machine', 'sink', 'microwave', 'orange tape', 'black chair', 'pink spray', 'purple moov body spray']:
     #     print(text)
