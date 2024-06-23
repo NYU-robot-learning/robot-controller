@@ -63,12 +63,11 @@ class RobotAgentMDP:
         else:
             raise RuntimeError(f"parameters of unsupported type: {type(parameters)}")
         self.robot = robot
+        end_link = "link_straight_gripper"
         if re == 1:
             stretch_gripper_max = 0.3
-            end_link = "link_straight_gripper"
         else:
             stretch_gripper_max = 0.64
-            end_link = "link_gripper_s3_body"
         self.transform_node = end_link
         self.manip_wrapper = Manipulation_Wrapper(self.robot, stretch_gripper_max = stretch_gripper_max, end_link = end_link)
         self.robot.move_to_nav_posture()
@@ -302,7 +301,7 @@ def recv_array(socket, flags=0, copy=True, track=False):
 class ImageSender:
     def __init__(self, 
         stop_and_photo = False, 
-        ip = '100.108.67.79', 
+        ip = '172.24.71.227', 
         image_port = 5555,
         text_port = 5556,
         manip_port = 5557,

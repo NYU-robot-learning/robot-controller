@@ -109,7 +109,8 @@ def main(
             break
         if mode == 'E':
             robot.switch_to_navigation_mode()
-            for _ in range(10):
+            for epoch in range(10):
+                print('\n', 'Exploration epoch ', epoch, '\n')
                 if not demo.run_exploration():
                     print('Exploration failed! Quitting!')
                     break

@@ -1,6 +1,5 @@
 numpy <1.24 # certain deprecated operations were used in other deps
 scipy
-sophuspy <1.0.0
 opencv-python
 pybullet
 trimesh
@@ -37,6 +36,16 @@ transformers
 wget
 setuptools==69.5.1
 loguru
-sophuspy==0.1.2
+sophuspy==1.2.0
 sentencepiece
 protobuf
+packaging
+pyparsing
+cycler
+kiwisolver
+six
+importlib_metadata
+pytz
+psutil
+transforms3d
+lxml
