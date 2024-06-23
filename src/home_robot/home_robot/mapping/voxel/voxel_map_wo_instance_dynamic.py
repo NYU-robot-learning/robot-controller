@@ -26,7 +26,7 @@ from home_robot.utils.morphology import (
     get_edges,
 )
 
-class SparseVoxelMapNavigationSpaceVoxel(XYT):
+class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
     """subclass for sampling XYT states from explored space"""
 
     # Used for making sure we do not divide by zero anywhere

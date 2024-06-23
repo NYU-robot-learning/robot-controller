@@ -20,24 +20,6 @@ class Node():
 def neighbors(pt: Tuple[int, int]) -> List[Tuple[int, int]]:
     return [(pt[0] + dx, pt[1] + dy) for dx in range(-1, 2) for dy in range(-1, 2) if (dx, dy) != (0, 0)]
 
-def compute_theta(cur_x, cur_y, end_x, end_y):
-    theta = 0
-    if end_x == cur_x and end_y >= cur_y:
-        theta = np.pi / 2
-    elif end_x == cur_x and end_y < cur_y:
-        theta = -np.pi / 2
-    else:
-        theta = np.arctan((end_y - cur_y) / (end_x - cur_x))
-        if end_x < cur_x:
-            theta = theta + np.pi
-        # move theta into [-pi, pi] range, for this function specifically, 
-        # (theta -= 2 * pi) or (theta += 2 * pi) is enough
-        if theta > np.pi:
-            theta = theta - 2 * np.pi
-        if theta < np.pi:
-            theta = theta + 2 * np.pi
-    return theta
-
 class AStar():
     """Define RRT planning problem and parameters"""
 
@@ -48,6 +30,24 @@ class AStar():
         """Create RRT planner with configuration"""
         self.space = space
         self.reset()
+    
+    def compute_theta(self, cur_x, cur_y, end_x, end_y):
+        theta = 0
+        if end_x == cur_x and end_y >= cur_y:
+            theta = np.pi / 2
+        elif end_x == cur_x and end_y < cur_y:
+            theta = -np.pi / 2
+        else:
+            theta = np.arctan((end_y - cur_y) / (end_x - cur_x))
+            if end_x < cur_x:
+                theta = theta + np.pi
+            # move theta into [-pi, pi] range, for this function specifically, 
+            # (theta -= 2 * pi) or (theta += 2 * pi) is enough
+            if theta > np.pi:
+                theta = theta - 2 * np.pi
+            if theta < np.pi:
+                theta = theta + 2 * np.pi
+        return theta
 
     def reset(self):
         print('loading the up to date navigable map')
@@ -135,6 +135,18 @@ class AStar():
             return False
         return ((c[1] - b[1]) / (c[0] - b[0])) == ((b[1] - a[1]) / (b[0] - a[0]))
 
+    def clean_path_for_xy(self, waypoints):
+        goal = waypoints[-1]
+        waypts = [self.to_pt(waypoint) for waypoint in waypoints]
+        waypts = self.clean_path(waypts)
+        waypoints = [self.to_xy(waypt) for waypt in waypts]
+        traj = []
+        for i in range(len(waypoints) - 1):
+            theta = self.compute_theta(waypoints[i][0], waypoints[i][1], waypoints[i + 1][0], waypoints[i + 1][1])
+            traj.append([waypoints[i][0], waypoints[i][1], float(theta)])
+        traj.append([waypoints[-1][0], waypoints[-1][1], goal[-1]])
+        return traj
+
     def clean_path(self, path) -> List[Tuple[int, int]]:
         """Cleans up the final path.
 
@@ -216,7 +228,7 @@ class AStar():
         self,
         start_xy: Tuple[float, float],
         end_xy: Tuple[float, float],
-        remove_line_of_sight_points: bool = True,
+        remove_line_of_sight_points: bool = False,
     ) -> List[Tuple[float, float]]:
 
         start_pt, end_pt = self.to_pt(start_xy), self.to_pt(end_xy)
@@ -268,7 +280,7 @@ class AStar():
         if remove_line_of_sight_points:
             path = self.clean_path(path)
 
-        #return [start_xy] + [self.to_xy(pt) for pt in path[1:-1]] + [end_xy]
+        # return [start_xy] + [self.to_xy(pt) for pt in path[1:-1]] + [end_xy]
         return [start_xy] + [self.to_xy(pt) for pt in path[1:]]
 
     def plan(self, start, goal, verbose: bool = True) -> PlanResult:
@@ -296,7 +308,7 @@ class AStar():
             return PlanResult(False, reason = "A* fails, check obstacle map")
         trajectory = []
         for i in range(len(waypoints) - 1):
-            theta = compute_theta(waypoints[i][0], waypoints[i][1], waypoints[i + 1][0], waypoints[i + 1][1])
+            theta = self.compute_theta(waypoints[i][0], waypoints[i][1], waypoints[i + 1][0], waypoints[i + 1][1])
             trajectory.append(Node([waypoints[i][0], waypoints[i][1], float(theta)]))
         trajectory.append(Node([waypoints[-1][0], waypoints[-1][1], goal[-1]]))
         print('Finish computing theta ', time.time() - self.start_time, ' seconds after path planning starts')
