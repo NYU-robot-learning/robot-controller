@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 import clip
 
-from voxel import VoxelizedPointcloud
+from home_robot.utils.voxel import VoxelizedPointcloud
 
 from typing import List, Optional, Tuple, Union
 from torch import Tensor

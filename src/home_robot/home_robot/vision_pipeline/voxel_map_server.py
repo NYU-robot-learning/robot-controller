@@ -21,6 +21,7 @@ import open3d as o3d
 from matplotlib import pyplot as plt
 # This VoxelizedPointCloud is exactly the same thing as that in home_robot.util.voxel, rewrite here just for easy debugging
 from voxel import VoxelizedPointcloud
+from home_robot.utils.voxel import VoxelizedPointcloud
 from voxel_map_localizer import VoxelMapLocalizer
 from home_robot.agent.multitask import get_parameters
 from home_robot.mapping.voxel import (
@@ -44,6 +45,8 @@ import threading
 import scipy
 
 from transformers import AutoProcessor, AutoModel
+import rerun as rr
+from ultralytics import YOLOWorld
 
 def load_socket(port_number):
     context = zmq.Context()
@@ -145,11 +148,15 @@ class ImageProcessor:
         img_port = 5555,
         text_port = 5556,
         pcd_path: str = None,
-        navigation_only = False
+        navigation_only = False,
+        rerun: bool = True
     ):
         self.siglip = siglip
         current_datetime = datetime.datetime.now()
         self.log = 'debug_' + current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
+        self.rerun = rerun
+        if self.rerun:
+            rr.init(self.log, spawn = True)
         self.min_depth = min_depth
         self.max_depth = max_depth
         self.obs_count = 0
@@ -237,14 +244,18 @@ class ImageProcessor:
             self.clip_preprocess = AutoProcessor.from_pretrained("google/siglip-base-patch16-224")
             self.clip_model.eval()
         if self.owl:
-            self.owl_processor = AutoProcessor.from_pretrained("google/owlvit-base-patch32")
-            self.owl_model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32").eval().to(self.device)
             if not os.path.exists('sam_vit_b_01ec64.pth'):
                 wget.download('https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', out = 'sam_vit_b_01ec64.pth')
             sam = sam_model_registry['vit_b'](checkpoint='sam_vit_b_01ec64.pth')
             self.mask_predictor = SamPredictor(sam)
             self.mask_predictor.model = self.mask_predictor.model.eval().to(self.device)
-            self.texts = [['a photo of ' + text for text in CLASS_LABELS_200]]
+            print(CLASS_LABELS_200)
+            # self.owl_processor = AutoProcessor.from_pretrained("google/owlvit-base-patch32")
+            # self.owl_model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32").eval().to(self.device)
+            # self.texts = [['a photo of ' + text for text in CLASS_LABELS_200]]
+            self.yolo_model = YOLOWorld('yolov8l-worldv2.pt')
+            self.texts = CLASS_LABELS_200
+            self.yolo_model.set_classes(self.texts)
         # self.voxel_map_localizer = VoxelMapLocalizer(device = self.device)
         self.voxel_map_localizer = VoxelMapLocalizer(device = 'cpu', siglip = self.siglip)
         if self.pcd_path is not None:
@@ -421,17 +432,22 @@ class ImageProcessor:
     
     def run_owl_sam_clip(self, rgb, mask, world_xyz):
         with torch.no_grad():
-            inputs = self.owl_processor(text=self.texts, images=rgb, return_tensors="pt")
-            for input in inputs:
-                inputs[input] = inputs[input].to(self.device)
-            outputs = self.owl_model(**inputs)
-            target_sizes = torch.Tensor([rgb.size()[-2:]]).to(self.device)
-            results = self.owl_processor.post_process_object_detection(outputs=outputs, threshold=0.15, target_sizes=target_sizes)
-            if len(results[0]['boxes']) == 0:
+            # inputs = self.owl_processor(text=self.texts, images=rgb, return_tensors="pt")
+            # for input in inputs:
+            #     inputs[input] = inputs[input].to(self.device)
+            # outputs = self.owl_model(**inputs)
+            # target_sizes = torch.Tensor([rgb.size()[-2:]]).to(self.device)
+            # results = self.owl_processor.post_process_object_detection(outputs=outputs, threshold=0.15, target_sizes=target_sizes)
+            # if len(results[0]['boxes']) == 0:
+            #     return
+            results = self.yolo_model.predict(rgb.permute(1,2,0)[:, :, [2, 1, 0]].numpy(), conf=0.15, verbose=False)
+            xyxy_tensor = results[0].boxes.xyxy
+            if len(xyxy_tensor) == 0:
                 return
 
             self.mask_predictor.set_image(rgb.permute(1,2,0).numpy())
-            bounding_boxes = torch.stack(sorted(results[0]['boxes'], key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
+            # bounding_boxes = torch.stack(sorted(results[0]['boxes'], key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
+            bounding_boxes = torch.stack(sorted(xyxy_tensor, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
             transformed_boxes = self.mask_predictor.transform.apply_boxes_torch(bounding_boxes.detach().to(self.device), rgb.shape[-2:])
             masks, _, _= self.mask_predictor.predict_torch(
                 point_coords=None,
@@ -454,7 +470,10 @@ class ImageProcessor:
             for vis_mask in masks:
                 segmentation_color_map[vis_mask.detach().cpu().numpy()] = [0, 255, 0]
             image_vis = cv2.addWeighted(image_vis, 0.7, segmentation_color_map, 0.3, 0)
-            cv2.imwrite(self.log + "/seg" + str(self.obs_count) + ".jpg", image_vis)
+            if not self.rerun:
+                cv2.imwrite(self.log + "/seg" + str(self.obs_count) + ".jpg", image_vis)
+            else:
+                rr.log("Seg", rr.Image(image_vis[:, :, [2, 1, 0]]))
     
             crops = []
             if not self.siglip:
@@ -537,9 +556,9 @@ class ImageProcessor:
                                     weights = weights)
 
     def load(self, log, number):
-        print('Loading semantic memory')
-        self.voxel_map_localizer.voxel_pcd = torch.load(log + '/memory.pt')
-        print('Finish oading semantic memory')
+        # print('Loading semantic memory')
+        # self.voxel_map_localizer.voxel_pcd = torch.load(log + '/memory.pt')
+        # print('Finish oading semantic memory')
         for i in range(1, number + 1):
             rgb = np.load(log + '/rgb' + str(i) + '.npy')
             depth = np.load(log + '/depth' + str(i) + '.npy')
@@ -567,19 +586,35 @@ class ImageProcessor:
                 camera_K = torch.Tensor(intrinsics)
             )
             obs, exp = self.voxel_map.get_2d_map()
-            with self.visualization_lock:
-                plt.subplot(2, 1, 1)
-                plt.imshow(obs.detach().cpu().numpy())
-                plt.title("obstacles")
-                plt.axis("off")
-                plt.subplot(2, 1, 2)
-                plt.imshow(exp.detach().cpu().numpy())
-                plt.title("explored")
-                plt.axis("off")
-                if not os.path.exists(self.log):
-                    os.mkdir(self.log)
-                plt.savefig(self.log + '/debug' + str(self.obs_count) + '.jpg')
-                plt.cla()
+
+            if self.owl:
+                self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+            else:
+                self.run_mask_clip(rgb, ~valid_depth, world_xyz)
+            self.obs_count += 1
+            if self.rerun:
+                rr.set_time_sequence("frame", self.obs_count)
+            
+                if self.voxel_map.voxel_pcd._points is not None:
+                    rr.log("Obstalce map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points, colors=self.voxel_map.voxel_pcd._rgb / 255., radii=0.03))
+                if self.voxel_map_localizer.voxel_pcd._points is not None:
+                    rr.log("Semantic memory/pointcloud", rr.Points3D(self.voxel_map_localizer.voxel_pcd._points, colors=self.voxel_map_localizer.voxel_pcd._rgb / 255, radii=0.03))
+                rr.log("Obstalce map/2D obs map", rr.Image(obs.int() * 255))
+                rr.log("Obstalce map/explored map", rr.Image(exp.int() * 255))
+            else:
+                with self.visualization_lock:
+                    plt.subplot(2, 1, 1)
+                    plt.imshow(obs.detach().cpu().numpy())
+                    plt.title("obstacles")
+                    plt.axis("off")
+                    plt.subplot(2, 1, 2)
+                    plt.imshow(exp.detach().cpu().numpy())
+                    plt.title("explored")
+                    plt.axis("off")
+                    if not os.path.exists(self.log):
+                        os.mkdir(self.log)
+                    plt.savefig(self.log + '/debug' + str(self.obs_count) + '.jpg')
+                    plt.cla()
         print('Finish building obstacle map')
 
     def debug(self, log, number):
@@ -721,6 +756,7 @@ class ImageProcessor:
 
         # with self.voxel_map_lock:
         #     self.voxel_map_localizer.voxel_pcd.clear_points(depth, intrinsics, pose)
+        #     self.voxel_map.voxel_pcd.clear_points(depth, intrinsics, pose)
 
         if self.owl:
             self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
@@ -734,6 +770,12 @@ class ImageProcessor:
             camera_K = torch.Tensor(intrinsics)
         )
         obs, exp = self.voxel_map.get_2d_map()
+        rr.set_time_sequence("frame", self.obs_count)
+        if self.voxel_map.voxel_pcd._points is not None:
+            rr.log("Obstalce map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points, colors=self.voxel_map.voxel_pcd._rgb / 255., radii=0.03))
+        if self.voxel_map_localizer.voxel_pcd._points is not None:
+            rr.log("Semantic memory/pointcloud", rr.Points3D(self.voxel_map_localizer.voxel_pcd._points, colors=self.voxel_map_localizer.voxel_pcd._rgb / 255, radii=0.03))
+        rr.log("Obstalce map/2D obs map", rr.Image(obs.int() * 255))
         with self.visualization_lock:
             plt.subplot(2, 1, 1)
             plt.imshow(obs.detach().cpu().numpy())
@@ -748,7 +790,14 @@ class ImageProcessor:
 
 if __name__ == "__main__":
     imageProcessor = ImageProcessor(pcd_path = None)
-    # imageProcessor.load('debug_2024-06-17_21-08-18', 96)
+    # imageProcessor.load('debug_2024-06-22_00-45-16', 21)
+    # from home_robot.utils.point_cloud import numpy_to_pcd
+    # import open3d
+    # pc_xyz, pc_rgb = imageProcessor.voxel_map.get_xyz_rgb()
+    # pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
+    # open3d.io.write_point_cloud('debug_2024-06-17_20-44-13.pcd', pcd)
+    # imageProcessor.voxel_map.write_to_pickle('debug_2024-06-17_20-44-13.pkl')
+    # print('finished!')
     # imageProcessor = ImageProcessor(pcd_path = 'debug_2024-06-02_18-20-46/memory.pt', navigation_only = True)  
     # for text in ['red cup', 'red bowl', 'green bowl', 'blue whiteboard care bottle', 'white table', 'coffee machine', 'sink', 'microwave', 'orange tape', 'black chair', 'pink spray', 'purple moov body spray']:
     #     print(text)

@@ -7,3 +7,4 @@ from .voxel import SparseVoxelMap
 from .voxel_map import SparseVoxelMapNavigationSpace
 from .voxel_wo_instance import SparseVoxelMapVoxel
 from .voxel_map_wo_instance import SparseVoxelMapNavigationSpaceVoxel
+from .voxel_map_wo_instance_dynamic import SparseVoxelMapNavigationSpaceVoxelDynamic
