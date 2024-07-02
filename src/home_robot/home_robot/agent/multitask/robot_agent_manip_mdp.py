@@ -93,7 +93,7 @@ class RobotAgentMDP:
         logger.info("Look around to check")
         time.sleep(1)
         for pan in [0.5, -0.5, -1.5]:
-            for tilt in [-0.5]:
+            for tilt in [-0.55]:
                 self.robot.head.set_pan_tilt(pan, tilt)
                 time.sleep(0.5)
                 self.update()
@@ -125,7 +125,7 @@ class RobotAgentMDP:
         res = self.image_sender.query_text(text, start)  
         if len(res) > 0:
             print("Plan successful!")
-            if np.isnan(res[-2]).all():
+            if len(res) > 2 and np.isnan(res[-2]).all():
                 self.robot.execute_trajectory(
                     res[:-2],
                     pos_err_threshold=self.pos_err_threshold,
