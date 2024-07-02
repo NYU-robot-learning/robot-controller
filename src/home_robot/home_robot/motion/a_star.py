@@ -170,8 +170,9 @@ class AStar():
                    break
             else:
                j = i + 1
-            if j - i >= 2:
-                cleaned_path.append(path[(i + j) // 2])
+            # Include the mid waypoint to avoid the collision
+            # if j - i >= 2:
+            #     cleaned_path.append(path[(i + j) // 2])
             cleaned_path.append(path[j])
             i = j
         return cleaned_path

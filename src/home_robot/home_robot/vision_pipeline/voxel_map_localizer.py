@@ -14,13 +14,15 @@ from transformers import AutoProcessor, AutoModel
 
 from sklearn.cluster import DBSCAN
 
-def find_clusters(vertices: np.ndarray, similarity: np.ndarray):
+from ultralytics import YOLOWorld
+
+def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
     # Calculate the number of top values directly
     top_positions = vertices
     # top_values = probability_over_all_points[top_indices].flatten()
 
     # Apply DBSCAN clustering
-    dbscan = DBSCAN(eps=0.1, min_samples=5)
+    dbscan = DBSCAN(eps=0.2, min_samples=1)
     clusters = dbscan.fit(top_positions)
     labels = clusters.labels_
 
@@ -29,15 +31,21 @@ def find_clusters(vertices: np.ndarray, similarity: np.ndarray):
     extends = []
     similarity_max_list = []
     points = []
+    obs_max_list = []
 
     for cluster_id in set(labels):
         if cluster_id == -1:  # Ignore noise
             continue
 
         members = top_positions[labels == cluster_id]
+        centroid = np.mean(members, axis=0)
+
         similarity_values = similarity[labels == cluster_id]
         simiarity_max = np.max(similarity_values)
-        centroid = np.mean(members, axis=0)
+
+        if obs is not None:
+            obs_values = obs[labels == cluster_id]
+            obs_max = np.max(obs_values)
 
         sx = np.max(members[:, 0]) - np.min(members[:, 0])
         sy = np.max(members[:, 1]) - np.min(members[:, 1])
@@ -48,11 +56,17 @@ def find_clusters(vertices: np.ndarray, similarity: np.ndarray):
         extends.append((sx, sy, sz))
         similarity_max_list.append(simiarity_max)
         points.append(members)
+        if obs is not None:
+            obs_max_list.append(obs_max)
 
-    return centroids, extends, similarity_max_list, points
+    if obs is not None:
+        return centroids, extends, similarity_max_list, points, obs_max_list
+    else:
+        return centroids, extends, similarity_max_list, points
 
 class VoxelMapLocalizer():
-    def __init__(self, model_config = 'ViT-B/16', device = 'cuda', siglip = True):
+    def __init__(self, log = None, model_config = 'ViT-B/16', device = 'cuda', siglip = True):
+        self.log = log
         self.device = device
         # self.clip_model, self.preprocessor = clip.load(model_config, device=device)
         self.siglip = siglip
@@ -64,12 +78,14 @@ class VoxelMapLocalizer():
             self.preprocessor = AutoProcessor.from_pretrained("google/siglip-base-patch16-224")
             self.clip_model.eval()
         self.voxel_pcd = VoxelizedPointcloud().to(self.device)
+        self.exist_model = YOLOWorld("yolov8l-worldv2.pt")
 
     def add(self,
         points: Tensor,
         features: Optional[Tensor],
         rgb: Optional[Tensor],
         weights: Optional[Tensor] = None,
+        obs_count: Optional[Tensor] = None,
     ):
         points = points.to(self.device)
         if features is not None:
@@ -81,7 +97,8 @@ class VoxelMapLocalizer():
         self.voxel_pcd.add(points = points, 
                         features = features,
                         rgb = rgb,
-                        weights = weights)
+                        weights = weights,
+                        obs_count = obs_count)
 
     def calculate_clip_and_st_embeddings_for_queries(self, queries):
         if isinstance(queries, str):
@@ -126,13 +143,58 @@ class VoxelMapLocalizer():
         points, features, _, _ = self.voxel_pcd.get_pointcloud()
         alignments = self.find_alignment_over_model(A).cpu()
         return points[alignments.argmax(dim = -1)].detach().cpu()
+    
+    def find_obs_id_for_A(self, A):
+        obs_counts = self.voxel_pcd._obs_counts
+        alignments = self.find_alignment_over_model(A).cpu()
+        return obs_counts[alignments.argmax(dim = -1)].detach().cpu()
 
-    def find_clusters_for_A(self, A):
+    def localize_A_v2(self, A):
+        centroids, extends, similarity_max_list, points, obs_max_list = self.find_clusters_for_A(A, return_obs_counts = True)
+        if len(centroids) == 0:
+            return None
+        for idx, (centroid, obs, similarity) in enumerate(sorted(zip(centroids, obs_max_list, similarity_max_list), key=lambda x: x[2], reverse=True)):
+            if similarity > 0.1 or self.check_existence(A, obs):
+                return centroid
+        return None
+
+    def check_existence(self, text, obs_id):
+        if obs_id <= 0:
+            return False
+        rgb = np.load(self.log + '/rgb' + str(obs_id) + '.npy')
+        rgb = rgb.astype(np.uint8)[:, :, [2, 1, 0]]
+        self.exist_model.set_classes([text])
+        results = self.exist_model.predict(rgb, conf=0.2, verbose=False)
+        xyxy_tensor = results[0].boxes.xyxy
+        return len(xyxy_tensor) != 0
+        # xyxys = xyxy_tensor.detach().cpu().numpy()
+        # depth = np.load(self.log + '/depth' + str(obs_id) + '.npy')
+        # for xyxy in xyxys:
+        #     w, h = depth.shape
+        #     tl_x, tl_y, br_x, br_y = xyxy
+        #     tl_x, tl_y, br_x, br_y = int(max(0, tl_x.item())), int(max(0, tl_y.item())), int(min(h, br_x.item())), int(min(w, br_y.item()))
+        #     median_depth = np.median(depth[tl_y: br_y, tl_x: br_x].flatten())
+        #     if median_depth < 2.5 and median_depth > 0.1:
+        #         return True
+        # return False
+
+    def find_clusters_for_A(self, A, return_obs_counts = False):
         points, features, _, _ = self.voxel_pcd.get_pointcloud()
         alignments = self.find_alignment_over_model(A).cpu().reshape(-1).detach().numpy()
-        turning_point = np.percentile(alignments, 99)
-        mask = alignments > turning_point
+        # turning_point = max(np.percentile(alignments, 99), 0.08)
+        turning_point = min(0.1, alignments[np.argsort(alignments)[-25]])
+        mask = alignments >= turning_point
         alignments = alignments[mask]
         points = points[mask]
-        centroids, extends, similarity_max_list, points = find_clusters(points.detach().cpu().numpy(), alignments)
-        return centroids, extends, similarity_max_list, points
+        if len(points) == 0:
+            if return_obs_counts:
+                return [], [], [], [], []
+            else:
+                return [], [], [], []
+        if return_obs_counts:
+            obs_ids = self.voxel_pcd._obs_counts.detach().cpu().numpy()[mask]
+            centroids, extends, similarity_max_list, points, obs_max_list = find_clusters(points.detach().cpu().numpy(), alignments, obs = obs_ids)
+            return centroids, extends, similarity_max_list, points, obs_max_list
+        else:
+            centroids, extends, similarity_max_list, points = find_clusters(points.detach().cpu().numpy(), alignments, obs = None)
+            return centroids, extends, similarity_max_list, points

@@ -123,8 +123,11 @@ class VoxelizedPointcloud:
     def reset(self):
         """Resets internal tensors"""
         self._points, self._features, self._weights, self._rgb = None, None, None, None
+        self._obs_counts = None
+        self._entity_ids = None
         self._mins = self.dim_mins
         self._maxs = self.dim_maxs
+        self.obs_count = 1
 
     def clear_points(self, depth, intrinsics, pose, depth_is_valid = None):
         if self._points is not None:
@@ -155,11 +158,17 @@ class VoxelizedPointcloud:
                         proj_depth < 0.01,
                         # depth is too large
                         # (~depth_is_valid)[valid_xys[:, 0], valid_xys[:, 1]],
-                        proj_depth > 2.0
+                        proj_depth > 2.5
                     ],
                     dim = 0
                 ),
                 dim = 0)
+
+            if self._entity_ids is not None:
+                removed_entities, removed_counts = torch.unique(self._entity_ids[~indices], return_counts = True)
+                total_counts = torch.bincount(self._entity_ids)
+                entities_to_be_removed = removed_entities[(removed_counts > total_counts[removed_entities] * 0.75) | (total_counts[removed_entities] - removed_counts < 5)]
+                indices = indices & ~torch.isin(self._entity_ids, entities_to_be_removed)
         
             print('Clearing non valid points...')
             print('Removing ' + str((~indices).sum().item()) + ' points.')
@@ -170,6 +179,10 @@ class VoxelizedPointcloud:
                 self._weights= self._weights[indices]
             if self._rgb is not None:
                 self._rgb = self._rgb[indices]
+            if self._obs_counts is not None:
+                self._obs_counts = self._obs_counts[indices]
+            if self._entity_ids is not None:
+                self._entity_ids = self._entity_ids[indices]
 
     def add(
         self,
@@ -177,6 +190,8 @@ class VoxelizedPointcloud:
         features: Optional[Tensor],
         rgb: Optional[Tensor],
         weights: Optional[Tensor] = None,
+        obs_count: Optional[int] = None,
+        entity_id: Optional[int] = None
     ):
         """Add a feature pointcloud to the voxel grid.
 
@@ -191,6 +206,16 @@ class VoxelizedPointcloud:
         """
         if weights is None:
             weights = torch.ones_like(points[..., 0])
+
+        if obs_count is None:
+            obs_count = torch.ones_like(weights) * self.obs_count
+        else:
+            obs_count = torch.ones_like(weights) * obs_count
+        if entity_id is None:
+            entity_id =  torch.ones_like(weights) * self.obs_count
+        else:
+            obs_count = torch.ones_like(weights) * entity_id
+        self.obs_count += 1
 
         # Update voxel grid bounds
         # This isn't strictly necessary since the functions below can infer the bounds
@@ -232,6 +257,8 @@ class VoxelizedPointcloud:
                 weights,
                 rgb,
             )
+            all_obs_counts = obs_count
+            all_entity_ids = entity_id
         else:
             assert (self._features is None) == (features is None)
             all_points = torch.cat([self._points, points], dim=0)
@@ -242,6 +269,8 @@ class VoxelizedPointcloud:
                 else None
             )
             all_rgb = torch.cat([self._rgb, rgb], dim=0) if (rgb is not None) else None
+            all_obs_counts = torch.cat([self._obs_counts, obs_count], dim=0)
+            all_entity_ids = torch.cat([self._entity_ids, entity_id], dim=0)
         # Future optimization:
         # If there are no new voxels, then we could save a bit of compute time
         # by only recomputing the voxel/cluster for the new points
@@ -250,14 +279,17 @@ class VoxelizedPointcloud:
         cluster_voxel_idx, cluster_consecutive_idx, _ = voxelize(
             all_points, voxel_size=self.voxel_size, start=self._mins, end=self._maxs
         )
-        self._points, self._features, self._weights, self._rgb = reduce_pointcloud(
+        self._points, self._features, self._weights, self._rgb, self._obs_counts, self._entity_ids = reduce_pointcloud(
             cluster_consecutive_idx,
             pos=all_points,
             features=all_features,
             weights=all_weights,
             rgbs=all_rgb,
+            obs_counts = all_obs_counts,
+            entity_ids = all_entity_ids,
             feature_reduce=self.feature_pool_method,
         )
+        self._obs_counts, self._entity_ids = self._obs_counts.int(), self._entity_ids.int()
         return
 
     def get_idxs(self, points: Tensor) -> Tensor:
@@ -432,6 +464,8 @@ def reduce_pointcloud(
     features: Tensor,
     weights: Optional[Tensor] = None,
     rgbs: Optional[Tensor] = None,
+    obs_counts: Optional[Tensor] = None,
+    entity_ids: Optional[Tensor] = None,
     feature_reduce: str = "mean",
 ) -> Tuple[Tensor]:
     """Pools values within each voxel
@@ -467,9 +501,19 @@ def reduce_pointcloud(
         )
     else:
         rgb_cluster = None
+    
+    if obs_counts is not None:
+        obs_count_cluster = scatter(obs_counts, voxel_cluster, dim = 0, reduce = "max")
+    else:
+        obs_count_cluster = None
+
+    if entity_ids is not None:
+        entity_ids_cluster = scatter(entity_ids, voxel_cluster, dim = 0, reduce = "max")
+    else:
+        entity_ids_cluster = None
 
     if features is None:
-        return pos_cluster, None, weights_cluster, rgb_cluster
+        return pos_cluster, None, weights_cluster, rgb_cluster, obs_count_cluster, entity_ids_cluster
 
     if feature_reduce == "mean":
         feature_cluster = scatter_weighted_mean(
@@ -484,7 +528,7 @@ def reduce_pointcloud(
     else:
         raise NotImplementedError(f"Unknown feature reduction method {feature_reduce}")
 
-    return pos_cluster, feature_cluster, weights_cluster, rgb_cluster
+    return pos_cluster, feature_cluster, weights_cluster, rgb_cluster, obs_count_cluster, entity_ids_cluster
 
 
 def scatter3d(
