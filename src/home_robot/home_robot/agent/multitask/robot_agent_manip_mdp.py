@@ -41,6 +41,8 @@ from home_robot.agent.multitask.ok_robot_hw.camera import RealSenseCamera
 from home_robot.agent.multitask.ok_robot_hw.utils.grasper_utils import pickup, move_to_point, capture_and_process_image
 from home_robot.agent.multitask.ok_robot_hw.utils.communication_utils import send_array, recv_array
 
+import cv2
+
 class RobotAgentMDP:
     """Basic demo code. Collects everything that we need to make this work."""
 
@@ -73,8 +75,8 @@ class RobotAgentMDP:
         self.robot.move_to_nav_posture()
 
         self.normalize_embeddings = True
-        self.pos_err_threshold = 0.15
-        self.rot_err_threshold = 0.3
+        self.pos_err_threshold = 0.2
+        self.rot_err_threshold = 0.4
         self.obs_count = 0
         self.obs_history = []
         self.guarantee_instance_is_reachable = (
@@ -82,6 +84,9 @@ class RobotAgentMDP:
         )
 
         self.image_sender = ImageSender()
+
+        self.look_around_times = []
+        self.execute_times = []
         
         timestamp = f"{datetime.datetime.now():%Y-%m-%d-%H-%M-%S}"
 
@@ -91,11 +96,10 @@ class RobotAgentMDP:
 
     def look_around(self, visualize: bool = False):
         logger.info("Look around to check")
-        time.sleep(1)
         for pan in [0.5, -0.5, -1.5]:
             for tilt in [-0.55]:
                 self.robot.head.set_pan_tilt(pan, tilt)
-                time.sleep(0.5)
+                time.sleep(0.3)
                 self.update()
 
                 if visualize:
@@ -117,12 +121,24 @@ class RobotAgentMDP:
         self,
         text: str,
     ):
-        self.robot.move_to_nav_posture()
+        start_time = time.time()
+
+        self.robot.head.look_front()
         self.look_around()
-        self.robot.move_to_nav_posture()
+        self.robot.head.look_front()
+        self.robot.switch_to_navigation_mode()
+
         start = self.robot.get_base_pose()
         print("       Start:", start)
         res = self.image_sender.query_text(text, start)  
+
+        look_around_finish = time.time()
+        look_around_take = look_around_finish - start_time
+        print('Looking around takes ', look_around_take, ' seconds.')
+        self.look_around_times.append(look_around_take)
+        print(self.look_around_times)
+        print(sum(self.look_around_times) / len(self.look_around_times))
+
         if len(res) > 0:
             print("Plan successful!")
             if len(res) > 2 and np.isnan(res[-2]).all():
@@ -131,6 +147,14 @@ class RobotAgentMDP:
                     pos_err_threshold=self.pos_err_threshold,
                     rot_err_threshold=self.rot_err_threshold,
                 )
+
+                execution_finish = time.time()
+                execution_take = execution_finish - look_around_finish
+                print('Executing action takes ', execution_take, ' seconds.')
+                self.execute_times.append(execution_take)
+                print(self.execute_times)
+                print(sum(self.execute_times) / len(self.execute_times))
+
                 return True, res[-1]
             else:
                 self.robot.execute_trajectory(
@@ -138,6 +162,14 @@ class RobotAgentMDP:
                     pos_err_threshold=self.pos_err_threshold,
                     rot_err_threshold=self.rot_err_threshold,
                 )
+
+                execution_finish = time.time()
+                execution_take = execution_finish - look_around_finish
+                print('Executing action takes ', execution_take, ' seconds.')
+                self.execute_times.append(execution_take)
+                print(self.execute_times)
+                print(sum(self.execute_times) / len(self.execute_times))
+
                 return False, None
         else:
             print("Failed. Try again!")
@@ -298,6 +330,52 @@ def recv_array(socket, flags=0, copy=True, track=False):
     A = np.frombuffer(msg, dtype=md['dtype'])
     return A.reshape(md['shape'])
 
+def send_rgb_img(socket, img):
+    img = img.astype(np.uint8) 
+    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+    _, img_encoded = cv2.imencode('.jpg', img, encode_param)
+    socket.send(img_encoded.tobytes())
+
+def recv_rgb_img(socket):
+    img = socket.recv()
+    img = np.frombuffer(img, dtype=np.uint8)
+    img = cv2.imdecode(img, cv2.IMREAD_COLOR)
+    return img
+
+def send_depth_img(socket, depth_img):
+    depth_img = (depth_img * 1000).astype(np.uint16)
+    encode_param = [int(cv2.IMWRITE_PNG_COMPRESSION), 3]  # Compression level from 0 (no compression) to 9 (max compression)
+    _, depth_img_encoded = cv2.imencode('.png', depth_img, encode_param)
+    socket.send(depth_img_encoded.tobytes())
+
+def recv_depth_img(socket):
+    depth_img = socket.recv()
+    depth_img = np.frombuffer(depth_img, dtype=np.uint8)
+    depth_img = cv2.imdecode(depth_img, cv2.IMREAD_UNCHANGED)
+    depth_img = (depth_img / 1000.)
+    return depth_img
+
+def send_everything(socket, rgb, depth, intrinsics, pose):
+    send_rgb_img(socket, rgb)
+    socket.recv_string()
+    send_depth_img(socket, depth)
+    socket.recv_string()
+    send_array(socket, intrinsics)
+    socket.recv_string()
+    send_array(socket, pose)
+    socket.recv_string()
+
+def recv_everything(socket):
+    rgb = recv_rgb_img(socket)
+    socket.send_string('')
+    depth = recv_depth_img(socket)
+    socket.send_string('')
+    intrinsics = recv_array(socket)
+    socket.send_string('')
+    pose = recv_array(socket)
+    socket.send_string('')
+    return rgb, depth, intrinsics, pose
+
 class ImageSender:
     def __init__(self, 
         stop_and_photo = False, 
@@ -330,6 +408,7 @@ class ImageSender:
         depth = obs.depth
         camer_K = obs.camera_K
         camera_pose = obs.camera_pose
-        data = np.concatenate((depth.shape, rgb.flatten(), depth.flatten(), camer_K.flatten(), camera_pose.flatten()))
-        send_array(self.img_socket, data)
-        self.img_socket.recv_string()
+        # data = np.concatenate((depth.shape, rgb.flatten(), depth.flatten(), camer_K.flatten(), camera_pose.flatten()))
+        # send_array(self.img_socket, data)
+        send_everything(self.img_socket, rgb, depth, camer_K, camera_pose)
+        # self.img_socket.recv_string()
