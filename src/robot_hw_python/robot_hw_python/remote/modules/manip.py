@@ -1,9 +1,4 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
 from typing import List, Optional
-
 import numpy as np
 from home_robot.core.state import ManipulatorBaseParams
 from home_robot.motion.robot import RobotModel
@@ -12,28 +7,21 @@ from home_robot.utils.geometry import posquat2sophus, sophus2posquat, xyt2sophus
 from scipy.spatial.transform import Rotation as R
 from std_srvs.srv import Trigger
 from robot_hw_python.constants import T_LOC_STABILIZE
-
 from .abstract import AbstractControlModule, enforce_enabled
 
 # from std_srvs.srv import TriggerRequest
-
 
 GRIPPER_MOTION_SECS = 2.2
 JOINT_POS_TOL = 0.015
 JOINT_ANG_TOL = 0.05
 
-
 class StretchManipulationClient(AbstractControlModule):
-    """Manages stretch arm control and "manipulation mode" base motions (forward and backward)."""
-
     def __init__(self, ros_client, robot_model: RobotModel):
         super().__init__()
-
         self._ros_client = ros_client
         self._robot_model = robot_model
-
-        # Tmp: keep track of base_x movement
         self.base_x = 0.0
+        self.safety_margin = 0.04  # 4 cm safety margin
 
     # Enable / disable
 
@@ -286,6 +274,10 @@ class StretchManipulationClient(AbstractControlModule):
             blocking: Whether command blocks until completetion
             initial_cfg: Preferred (initial) joint state configuration
         """
+        # Adjust the target position to ensure the gripper does not touch the ground
+        if pos[2] < self.safety_margin:
+            pos[2] = self.safety_margin
+
         full_body_cfg = self.solve_ik(pos, quat, relative, world_frame, initial_cfg, debug)
         if full_body_cfg is None:
             print("Warning: Cannot find an IK solution for desired EE pose!")

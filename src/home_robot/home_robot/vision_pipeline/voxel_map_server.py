@@ -45,11 +45,23 @@ import scipy
 
 from transformers import AutoProcessor, AutoModel
 
+import requests
+
+# Function to update UI step
+def update_ui_step(step_name):
+    url = "http://10.19.214.56:5000/update_ui_step"  # Replace with your UI endpoint
+    data = {"step": step_name}
+    try:
+        requests.post(url, json=data)
+    except Exception as e:
+        print(f"Failed to update UI step: {e}")
+
 def load_socket(port_number):
     context = zmq.Context()
     socket = context.socket(zmq.REP)
     socket.bind("tcp://*:" + str(port_number))
 
+    update_ui_step("Setting Up Sockets for Data Reception")
     return socket
 
 def send_array(socket, A, flags=0, copy=True, track=False):
@@ -81,7 +93,6 @@ def numpy_to_pcd(xyz: np.ndarray, rgb: np.ndarray = None) -> o3d.geometry.PointC
     return pcd
 
 def get_inv_intrinsics(intrinsics):
-    # return intrinsics.double().inverse().to(intrinsics)
     fx, fy, ppx, ppy = intrinsics[..., 0, 0], intrinsics[..., 1, 1], intrinsics[..., 0, 2], intrinsics[..., 1, 2]
     inv_intrinsics = torch.zeros_like(intrinsics)
     inv_intrinsics[..., 0, 0] = 1.0 / fx
@@ -125,8 +136,6 @@ def get_xyz(depth, pose, intrinsics):
     xy = torch.stack([xs, ys], dim=-1).flatten(0, 1).unsqueeze(0).repeat_interleave(bsz, 0)
     xyz = torch.cat((xy, torch.ones_like(xy[..., :1])), dim=-1)
 
-    # Applies intrinsics and extrinsics.
-    # xyz = xyz @ intrinsics.inverse().transpose(-1, -2)
     xyz = xyz @ get_inv_intrinsics(intrinsics).transpose(-1, -2)
     xyz = xyz * depth.flatten(1).unsqueeze(-1)
     xyz = (xyz[..., None, :] * pose[..., None, :3, :3]).sum(dim=-1) + pose[..., None, :3, 3]
@@ -175,10 +184,6 @@ class ImageProcessor:
 
         self.visualization_lock = threading.Lock()
 
-        # self.text_thread = threading.Thread(target=self._recv_text)
-        # self.text_thread.daemon = True
-        # self.text_thread.start()
-    
     def create_obstacle_map(self):
         print("- Load parameters")
         parameters = get_parameters("/data/peiqi/robot-controller/src/robot_hw_python/configs/default.yaml")
@@ -215,20 +220,14 @@ class ImageProcessor:
         self.space = SparseVoxelMapNavigationSpace(
             self.voxel_map,
             HelloStretchKinematics(urdf_path = '/data/peiqi/robot-controller/assets/hab_stretch/urdf'),
-            # step_size=parameters["step_size"],
             rotation_step_size=parameters["rotation_step_size"],
-            dilate_frontier_size=parameters[
-                "dilate_frontier_size"
-            ],  # 0.6 meters back from every edge = 12 * 0.02 = 0.24
+            dilate_frontier_size=parameters["dilate_frontier_size"],
             dilate_obstacle_size=parameters["dilate_obstacle_size"],
         )
 
-        # Create a simple motion planner
         self.planner = AStar(self.space)
 
     def create_vision_model(self):
-        # self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
-        # self.clip_model.eval()
         if not self.siglip:
             self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
             self.clip_model.eval()
@@ -245,20 +244,17 @@ class ImageProcessor:
             self.mask_predictor = SamPredictor(sam)
             self.mask_predictor.model = self.mask_predictor.model.eval().to(self.device)
             self.texts = [['a photo of ' + text for text in CLASS_LABELS_200]]
-        # self.voxel_map_localizer = VoxelMapLocalizer(device = self.device)
         self.voxel_map_localizer = VoxelMapLocalizer(device = 'cpu', siglip = self.siglip)
         if self.pcd_path is not None:
             print('Loading old semantic memory')
             self.voxel_map_localizer.voxel_pcd = torch.load(self.pcd_path)
             print('Finish loading old semantic memory')
 
-
     def recv_text(self):
         text = self.text_socket.recv_string()
-        self.text_socket.send_string('Text recevied, waiting for robot pose')
+        self.text_socket.send_string('Text received, waiting for robot pose')
         start_pose = recv_array(self.text_socket)
 
-        # Do visual grounding
         if text != '':
             with self.voxel_map_lock:
                 localized_point = self.voxel_map_localizer.localize_AonB(text)
@@ -267,10 +263,8 @@ class ImageProcessor:
                 point = self.sample_navigation(start_pose, localized_point)
                 plt.savefig(self.log + '/debug_' + text + '.png')
                 plt.cla()
-        # Do Frontier based exploration
         else:
             point = self.sample_frontier()
-            # plt.savefig(self.log + '/get_frontier_debug_' + str(self.obs_count) + '.jpg')
 
         if point is None:
             print('Unable to find any target point, some exception might happen')
@@ -280,8 +274,6 @@ class ImageProcessor:
             res = self.planner.plan(start_pose, point)
             if res.success:
                 traj = [pt.state for pt in res.trajectory]
-                # If we are navigating to some object of interst, send (x, y, z) of 
-                # the object so that we can make sure the robot looks at the object after navigation
                 if text != '': 
                     traj.append(np.asarray(localized_point))
                 send_array(self.text_socket, traj)
@@ -304,25 +296,6 @@ class ImageProcessor:
         plt.imshow(self.planner._navigable)
         return goal
 
-        # target_grid = self.voxel_map.xy_to_grid_coords(point[:2]).int()
-        # obstacles, explored = self.voxel_map.get_2d_map()
-        # point_mask = torch.zeros_like(explored)
-        # point_mask[target_grid[0]: target_grid[0] + 2, target_grid[1]: target_grid[1] + 2] = True
-        # try_count = 0
-        # for goal in self.space.sample_near_mask(point_mask, radius_m=radius_m, debug = True):
-        #     goal = goal.cpu().numpy()
-        #     print("Sampled Goal:", goal)
-        #     goal_is_valid = self.space.is_valid(goal, verbose=False)
-        #     if verbose:
-        #         print(" Goal is valid:", goal_is_valid)
-        #     try_count += 1
-        #     if try_count > max_tries:
-        #         return None
-        #     if not goal_is_valid:
-        #         print(" -> resample goal.")
-        #         continue
-        #     return goal
-
     def sample_frontier(self):
         for goal in self.space.sample_closest_frontier(
             [0, 0, 0], verbose=True, debug=False, expand_size=self.default_expand_frontier_size
@@ -339,10 +312,10 @@ class ImageProcessor:
                 print(" -> resample goal.")
                 continue
             return goal
-            
 
     def _recv_image(self):
         while True:
+            update_ui_step("Receiving Images")
             data = recv_array(self.img_socket)
             print('Image received')
             start_time = time.time()
@@ -389,9 +362,6 @@ class ImageProcessor:
         return feat.permute(0, 2, 3, 1)
     
     def run_mask_clip(self, rgb, mask, world_xyz):
-        # This code verify whether image is BGR, if it is RGB, then you should transform images into BGR
-        # cv2.imwrite('debug.jpg', np.asarray(transforms.ToPILImage()(rgb), dtype = np.uint8))
-
         with torch.no_grad():
             if self.device == 'cpu':
                 input = self.clip_preprocess(transforms.ToPILImage()(rgb)).unsqueeze(0).to(self.device)
@@ -399,20 +369,6 @@ class ImageProcessor:
                 input = self.clip_preprocess(transforms.ToPILImage()(rgb)).unsqueeze(0).to(self.device).half()
             features = self.extract_mask_clip_features(input, rgb.shape[-2:])[0].cpu()
 
-        # Let MaskClip do segmentation, the results should be reasonable but do not expect it to be accurate
-
-        # text = clip.tokenize(["a keyboard", "a human"]).to(self.device)
-        # image_vis = np.array(rgb.permute(1, 2, 0))
-        # cv2.imwrite('clean_' + str(self.obs_count) + '.jpg', cv2.cvtColor(image_vis, cv2.COLOR_RGB2BGR))
-        # with torch.no_grad():
-        #     text_features = self.clip_model.encode_text(text)
-        #     text_features = F.normalize(text_features, dim = -1)
-        #     output = torch.argmax(features.float() @ text_features.T.float().cpu(), dim = -1)
-        # segmentation_color_map = np.zeros(image_vis.shape, dtype=np.uint8)
-        # segmentation_color_map[np.asarray(output) == 0] = [0, 255, 0]
-        # image_vis = cv2.addWeighted(image_vis, 0.7, segmentation_color_map, 0.3, 0)
-        # cv2.imwrite("seg" + str(self.obs_count) + ".jpg", cv2.cvtColor(image_vis, cv2.COLOR_RGB2BGR))
-            
         valid_xyz = world_xyz[~mask]
         features = features[~mask]
         valid_rgb = rgb.permute(1, 2, 0)[~mask]
@@ -420,6 +376,7 @@ class ImageProcessor:
             self.add_to_voxel_pcd(valid_xyz, features, valid_rgb)
     
     def run_owl_sam_clip(self, rgb, mask, world_xyz):
+        update_ui_step("Running Segmentation and Object Detection")
         with torch.no_grad():
             inputs = self.owl_processor(text=self.texts, images=rgb, return_tensors="pt")
             for input in inputs:
@@ -441,11 +398,8 @@ class ImageProcessor:
             )
             masks = masks[:, 0, :, :].cpu()
             
-            # Debug code, visualize all bounding boxes and segmentation masks
-
             image_vis = np.array(rgb.permute(1, 2, 0))
             segmentation_color_map = np.zeros(image_vis.shape, dtype=np.uint8)
-            # cv2.imwrite('clean_' + str(self.obs_count) + '.jpg', cv2.cvtColor(image_vis, cv2.COLOR_RGB2BGR))
             for idx, box in enumerate(bounding_boxes):
                 tl_x, tl_y, br_x, br_y = box
                 tl_x, tl_y, br_x, br_y = tl_x.item(), tl_y.item(), br_x.item(), br_y.item()
@@ -468,48 +422,10 @@ class ImageProcessor:
                     crops.append(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])
                 inputs = self.clip_preprocess(images = crops, padding="max_length", return_tensors="pt").to(self.device)
                 features = self.clip_model.get_image_features(**inputs)
-            # for box in bounding_boxes:
-            #     tl_x, tl_y, br_x, br_y = box
-            #     crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
-            # features = self.clip_model.encode_image(torch.stack(crops, dim = 0).to(self.device))
             features = F.normalize(features, dim = -1).cpu()
-            
-            # Debug code, let the clip select bounding boxes most aligned with a text query, used to check whether clip embeddings for
-            # bounding boxes are reasonable
-
-            # text = clip.tokenize(["a coco cola"]).to(self.device)
-
-            # with torch.no_grad():
-            #     text_features = self.clip_model.encode_text(text)
-            #     text_features = F.normalize(text_features, dim = -1)
-            #     i = torch.argmax(features.float() @ text_features.T.float().cpu()).item()
-            # image_vis = np.array(rgb.permute(1, 2, 0))
-            # segmentation_color_map = np.zeros(image_vis.shape, dtype=np.uint8)
-            # cv2.imwrite('clean_' + str(self.obs_count) + '.jpg', cv2.cvtColor(image_vis, cv2.COLOR_RGB2BGR))
-            # tl_x, tl_y, br_x, br_y = bounding_boxes[i]
-            # tl_x, tl_y, br_x, br_y = tl_x.item(), tl_y.item(), br_x.item(), br_y.item()
-            # cv2.rectangle(image_vis, (int(tl_x), int(tl_y)), (int(br_x), int(br_y)), (255, 0, 0), 2)
-            # image_vis = cv2.cvtColor(image_vis, cv2.COLOR_RGB2BGR) 
-            # for vis_mask in masks:
-            #     segmentation_color_map[vis_mask.detach().cpu().numpy()] = [0, 255, 0]
-            # image_vis = cv2.addWeighted(image_vis, 0.7, segmentation_color_map, 0.3, 0)
-            # cv2.imwrite("seg" + str(self.obs_count) + ".jpg", image_vis)
-
-
+        
         for idx, (sam_mask, feature) in enumerate(zip(masks.cpu(), features.cpu())):
             valid_mask = torch.logical_and(~mask, sam_mask)
-            # Debug code, check whether every mask makes sense
-
-            # plt.subplot(2, 2, 1)
-            # plt.imshow(~mask)
-            # plt.axis('off')
-            # plt.subplot(2, 2, 2)
-            # plt.imshow(sam_mask)
-            # plt.axis('off')
-            # plt.subplot(2, 2, 3)
-            # plt.imshow(valid_mask)
-            # plt.axis('off')
-            # plt.savefig('seg_' + str(idx) + '.jpg')
             valid_xyz = world_xyz[valid_mask]
             if valid_xyz.shape[0] == 0:
                 continue
@@ -518,7 +434,7 @@ class ImageProcessor:
             self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb)
     
     def add_to_voxel_pcd(self, valid_xyz, feature, valid_rgb, weights = None, threshold = 0.95):
-        # Adding all points to voxelizedPointCloud is useless and expensive, we should exclude threshold of all points
+        update_ui_step("Adding Data to Voxel Map")
         selected_indices = torch.randperm(len(valid_xyz))[:int((1 - threshold) * len(valid_xyz))]
         if len(selected_indices) == 0:
             return
@@ -539,7 +455,7 @@ class ImageProcessor:
     def load(self, log, number):
         print('Loading semantic memory')
         self.voxel_map_localizer.voxel_pcd = torch.load(log + '/memory.pt')
-        print('Finish oading semantic memory')
+        print('Finish loading semantic memory')
         for i in range(1, number + 1):
             rgb = np.load(log + '/rgb' + str(i) + '.npy')
             depth = np.load(log + '/depth' + str(i) + '.npy')
@@ -622,71 +538,12 @@ class ImageProcessor:
         centroids, extends, similarity_max_list, target_points = self.voxel_map_localizer.find_clusters_for_A(text)
         target_point = target_points[np.array(similarity_max_list).argmax()]
         points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
-        # points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-        # points = np.concatenate((points, target_point))
-        # rgb = np.concatenate((rgb / 255, np.array([[1, 0, 0] for _ in range(len(target_point))])))
         if not os.path.exists('debug'):
             os.mkdir('debug')
         pcd = numpy_to_pcd(points, rgb / 255)
         o3d.io.write_point_cloud('debug/debug.pcd', pcd)
         pcd = numpy_to_pcd(target_point, np.ones((len(target_point), 3)))
         o3d.io.write_point_cloud('debug/' + text + '.pcd', pcd)
-
-    # def visualize_res(self, text = 'red cup', threshold = [10, 50, 100, 500, 1000]):
-    #     points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
-    #     points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-    #     rgb = rgb / 255
-    #     pcd = numpy_to_pcd(points, rgb)
-    #     if not os.path.exists(text):
-    #         os.mkdir(text)
-    #     o3d.io.write_point_cloud(text + '/debug.pcd', pcd)
-    #     alignments = self.voxel_map_localizer.find_alignment_over_model(text)
-    #     for k_A in threshold:
-    #         rgb[alignments[0].topk(k = k_A, dim = -1).indices.numpy()] = np.array([1, 0, 0])
-    #         pcd = numpy_to_pcd(points, rgb)
-    #         o3d.io.write_point_cloud(text + '/debug_' + str(k_A) + '.pcd', pcd)
-
-    # def visualize_hist(self, text = 'red cup'):
-    #     alignments = self.voxel_map_localizer.find_alignment_over_model(text)
-    #     # negatives = ['object', 'texture', 'stuff', 'thing']
-    #     # negative_alignments = self.voxel_map_localizer.find_alignment_over_model(negatives)
-    #     # alignments = (alignments.exp() / (negative_alignments.exp() + alignments.exp())).min(dim = 0).values
-    #     plt.title(text)
-    #     plt.hist(alignments.detach().numpy())
-    #     if not os.path.exists('debug'):
-    #         os.mkdir('debug')
-    #     plt.savefig('debug/' + text + '.jpg')
-    #     plt.cla()
-
-    # def visualize_cs(self, text, threshold = [0.1]):
-    #     # points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
-    #     # points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-    #     # rgb = rgb / 255
-    #     # pcd = numpy_to_pcd(points, rgb)
-    #     # if not os.path.exists('debug1'):
-    #     #     os.mkdir('debug1')
-    #     # o3d.io.write_point_cloud('debug1' + '/debug.pcd', pcd)
-    #     # alignments = self.voxel_map_localizer.find_alignment_over_model(text)
-    #     # negatives = ['object', 'texture', 'stuff', 'thing']
-    #     # negative_alignments = self.voxel_map_localizer.find_alignment_over_model(negatives)
-    #     # alignments = (alignments.exp() / (negative_alignments.exp() + alignments.exp())).min(dim = 0).values
-    #     # for k_A in threshold:
-    #     #     rgb[alignments.detach().numpy() > k_A] = np.array([1, 0, 0])
-    #     #     pcd = numpy_to_pcd(points, rgb)
-    #     #     o3d.io.write_point_cloud('debug1' + '/debug_' + text + '_' + str(k_A) + '.pcd', pcd)
-
-    #     points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
-    #     points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-    #     rgb = rgb / 255
-    #     pcd = numpy_to_pcd(points, rgb)
-    #     if not os.path.exists('debug'):
-    #         os.mkdir('debug')
-    #     o3d.io.write_point_cloud('debug' + '/debug.pcd', pcd)
-    #     alignments = self.voxel_map_localizer.find_alignment_over_model(text)
-    #     for k_A in threshold:
-    #         rgb[alignments[0].detach().numpy() > k_A] = np.array([1, 0, 0])
-    #         pcd = numpy_to_pcd(points, rgb)
-    #         o3d.io.write_point_cloud('debug' + '/debug_' + text + '_' + str(k_A) + '.pcd', pcd)
 
     def process_rgbd_images(self, data):
         if not os.path.exists(self.log):
@@ -700,7 +557,6 @@ class ImageProcessor:
         pose = data[2 + w * h * 3 + w * h + 9: 2 + w * h * 3 + w * h + 9 + 16].reshape(4, 4)
         world_xyz = get_xyz(depth, pose, intrinsics).squeeze(0)
 
-        # cv2.imwrite('debug/rgb' + str(self.obs_count) + '.jpg', rgb[:, :, [2, 1, 0]])
         np.save(self.log + '/rgb' + str(self.obs_count) + '.npy', rgb)
         np.save(self.log + '/depth' + str(self.obs_count) + '.npy', depth)
         np.save(self.log + '/intrinsics' + str(self.obs_count) + '.npy', intrinsics)
@@ -718,9 +574,6 @@ class ImageProcessor:
             valid_depth
             & (median_filter_error < 0.01).bool()
         )
-
-        # with self.voxel_map_lock:
-        #     self.voxel_map_localizer.voxel_pcd.clear_points(depth, intrinsics, pose)
 
         if self.owl:
             self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
@@ -748,14 +601,6 @@ class ImageProcessor:
 
 if __name__ == "__main__":
     imageProcessor = ImageProcessor(pcd_path = None)
-    # imageProcessor.load('debug_2024-06-17_21-08-18', 96)
-    # imageProcessor = ImageProcessor(pcd_path = 'debug_2024-06-02_18-20-46/memory.pt', navigation_only = True)  
-    # for text in ['red cup', 'red bowl', 'green bowl', 'blue whiteboard care bottle', 'white table', 'coffee machine', 'sink', 'microwave', 'orange tape', 'black chair', 'pink spray', 'purple moov body spray']:
-    #     print(text)
-        # imageProcessor.visualize_res(text = text) 
-        # imageProcessor.visualize_hist(text = text)
-        # imageProcessor.visualize_cs(text = text)
-        # imageProcessor.test_DBSCAN(text = text)
     try:  
         while True:
             imageProcessor.recv_text()

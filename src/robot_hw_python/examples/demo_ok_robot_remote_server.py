@@ -1,47 +1,36 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
 import datetime
-import sys
-import time
-import timeit
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import click
-import matplotlib.pyplot as plt
+import cv2
 import numpy as np
-import open3d
+import click
 import rclpy
-import torch
-from PIL import Image
+import requests
 
-# Mapping and perception
 from home_robot.agent.multitask import get_parameters
 from home_robot.agent.multitask import RemoteRobotAgentManip as RobotAgent
-
-# Chat and UI tools
-from home_robot.utils.point_cloud import numpy_to_pcd, show_point_cloud
 from robot_hw_python.remote import StretchClient
 
-import cv2
-import threading
+def update_ui_step(step_name):
+    url = "http://10.19.214.56:5000/update_step"
+    data = {"step": step_name}
+    try:
+        requests.post(url, json=data)
+    except Exception as e:
+        print(f"Failed to update UI step: {e}")
 
-import os
+def update_ui_task(task_name):
+    url = "http://10.19.214.56:5000/update_task"
+    data = {"task": task_name}
+    try:
+        requests.post(url, json=data)
+    except Exception as e:
+        print(f"Failed to update UI task: {e}")
 
 def compute_tilt(camera_xyz, target_xyz):
-    '''
-        a util function for computing robot head tilts so the robot can look at the target object after navigation
-        - camera_xyz: estimated (x, y, z) coordinates of camera
-        - target_xyz: estimated (x, y, z) coordinates of the target object
-    '''
     vector = camera_xyz - target_xyz
     return -np.arctan2(vector[2], np.linalg.norm(vector[:2]))
 
 @click.command()
 @click.option("--rate", default=5, type=int)
-@click.option("--visualize", default=False, is_flag=True)
 @click.option("--manual-wait", default=False, is_flag=True)
 @click.option("--output-filename", default="stretch_output", type=str)
 @click.option("--show-intermediate-maps", default=False, is_flag=True)
@@ -56,7 +45,6 @@ def compute_tilt(camera_xyz, target_xyz):
 )
 def main(
     rate,
-    # visualize,
     manual_wait,
     output_filename,
     navigate_home: bool = False,
@@ -66,13 +54,6 @@ def main(
     input_path: str = None,
     **kwargs,
 ):
-    """
-    Including only some selected arguments here.
-
-    Args:
-        show_intermediate_maps(bool): show maps as we explore
-        random_goals(bool): randomly sample frontier goals instead of looking for closest
-    """
 
     rclpy.init()
     current_datetime = datetime.datetime.now()
@@ -80,14 +61,11 @@ def main(
     output_pcd_filename = output_filename + "_" + formatted_datetime + ".pcd"
     output_pkl_filename = output_filename + "_" + formatted_datetime + ".pkl"
 
-    click.echo("Will connect to a Stretch robot and collect a short trajectory.")
     print("- Connect to Stretch")
     robot = StretchClient()
-    # robot.nav.navigate_to([0, 0, 0])
 
     print("- Load parameters")
     parameters = get_parameters("src/robot_hw_python/configs/default.yaml")
-    # print(parameters)
     if explore_iter >= 0:
         parameters["exploration_steps"] = explore_iter
     object_to_find, location_to_place = None, None
@@ -95,12 +73,12 @@ def main(
 
     print("- Start robot agent with data collection")
     demo = RobotAgent(
-        robot, parameters, re = re, log_dir = 'debug' + '_' + formatted_datetime
+        robot, parameters, re=re, log_dir='debug' + '_' + formatted_datetime
     )
 
     if input_path:
         print('start reading from old pickle file')
-        demo.voxel_map.read_from_pickle(filename = input_path)
+        demo.voxel_map.read_from_pickle(filename=input_path)
         print('finish reading from old pickle file')
 
     while True:
@@ -108,53 +86,67 @@ def main(
         if mode == 'S':
             break
         if mode == 'E':
+            update_ui_task("Exploration Mode Activated")
+            update_ui_step("Switching the robot to navigation mode")
             robot.switch_to_navigation_mode()
+            update_ui_step("Running the exploration routine")
             demo.run_exploration(
                 rate,
                 explore_iter=2
             )
         else:
+            update_ui_task("Pickup Mode Activated")
             robot.move_to_nav_posture()
             robot.head.look_front()
             robot.switch_to_navigation_mode()
             text = input('Enter object name: ')
+            update_ui_step(f"Navigating to {text}")
             point = demo.navigate(text)
             if point is None:
                 print('Navigation Failure')
                 continue
             cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            update_ui_step(f"Captured image of {text}")
             robot.switch_to_navigation_mode()
             xyt = robot.nav.get_base_pose()
             xyt[2] = xyt[2] + np.pi / 2
             robot.nav.navigate_to(xyt)
+            update_ui_step(f"Arrived at {text}")
 
             if input('You want to run manipulation: y/n') == 'n':
                 continue
+            update_ui_step(f"Preparing to manipulate {text}")
             camera_xyz = robot.head.get_pose()[:3, 3]
             theta = compute_tilt(camera_xyz, point)
             demo.manipulate(text, theta)
+            update_ui_step(f"Manipulated {text}")
             
             robot.head.look_front()
             robot.switch_to_navigation_mode()
             if input('You want to run placing: y/n') == 'n':
                 continue
+            update_ui_task("Place Mode Activated")
             text = input('Enter receptacle name: ')
+            update_ui_step(f"Navigating to {text}")
             point = demo.navigate(text)
             if point is None:
                 print('Navigation Failure')
                 continue
             cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            update_ui_step(f"Captured image of {text}")
             robot.switch_to_navigation_mode()
             xyt = robot.nav.get_base_pose()
             xyt[2] = xyt[2] + np.pi / 2
             robot.nav.navigate_to(xyt)
+            update_ui_step(f"Arrived at {text}")
         
             if input('You want to run placing: y/n') == 'n':
                 continue
+            update_ui_step(f"Preparing to place {text}")
             camera_xyz = robot.head.get_pose()[:3, 3]
             theta = compute_tilt(camera_xyz, point)
             demo.place(text, theta)
-
+            update_ui_step(f"Placed {text}")
 
 if __name__ == "__main__":
     main()

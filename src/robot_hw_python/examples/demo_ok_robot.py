@@ -1,18 +1,11 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
 import datetime
-import os
 import sys
-import threading
 import time
 import timeit
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import click
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import open3d
@@ -20,24 +13,61 @@ import rclpy
 import torch
 from PIL import Image
 
-# Mapping and perception
-from home_robot.agent.multitask import RobotAgentManip as RobotAgent
 from home_robot.agent.multitask import get_parameters
+from home_robot.agent.multitask import RobotAgentManip as RobotAgent
 
-# Chat and UI tools
 from home_robot.utils.point_cloud import numpy_to_pcd, show_point_cloud
 from robot_hw_python.remote import StretchClient
 
+import cv2
+import threading
+import os
+import requests
 
 def compute_tilt(camera_xyz, target_xyz):
-    """
-    a util function for computing robot head tilts so the robot can look at the target object after navigation
-    - camera_xyz: estimated (x, y, z) coordinates of camera
-    - target_xyz: estimated (x, y, z) coordinates of the target object
-    """
     vector = camera_xyz - target_xyz
     return -np.arctan2(vector[2], np.linalg.norm(vector[:2]))
 
+def update_step(name, percentage):
+    url = 'http://localhost:5000/update_step'
+    data = {'name': name, 'percentage': percentage}
+    requests.post(url, json=data)
+
+def update_place_step(name, percentage):
+    url = 'http://localhost:5000/update_place_step'
+    data = {'name': name, 'percentage': percentage}
+    requests.post(url, json=data)
+
+def update_mode(mode):
+    url = 'http://localhost:5000/update_mode'
+    data = {'mode': mode}
+    requests.post(url, json=data)
+
+def update_task(task):
+    url = 'http://localhost:5000/update_task'
+    data = {'task': task}
+    requests.post(url, json=data)
+
+def clear_mode_display():
+    url = 'http://localhost:5000/clear_mode_display'
+    requests.post(url)
+
+def clear_task_display():
+    url = 'http://localhost:5000/clear_task_display'
+    requests.post(url)
+
+import threading
+
+def update_mode_with_clear(mode):
+    update_mode(mode)
+    threading.Timer(5, clear_mode_display).start()
+
+def update_task_with_clear(task):
+    update_task(task)
+    threading.Timer(5, clear_task_display).start()
+
+def clear_task_display_after_delay(delay):
+    threading.Timer(delay, clear_task_display).start()
 
 @click.command()
 @click.option("--rate", default=5, type=int)
@@ -56,7 +86,6 @@ def compute_tilt(camera_xyz, target_xyz):
 )
 def main(
     rate,
-    # visualize,
     manual_wait,
     output_filename,
     navigate_home: bool = False,
@@ -83,11 +112,9 @@ def main(
     click.echo("Will connect to a Stretch robot and collect a short trajectory.")
     print("- Connect to Stretch")
     robot = StretchClient()
-    # robot.nav.navigate_to([0, 0, 0])
 
     print("- Load parameters")
     parameters = get_parameters("src/robot_hw_python/configs/default.yaml")
-    # print(parameters)
     if explore_iter >= 0:
         parameters["exploration_steps"] = explore_iter
     object_to_find, location_to_place = None, None
@@ -95,31 +122,32 @@ def main(
 
     print("- Start robot agent with data collection")
     demo = RobotAgent(
-        robot, parameters, re = re, log_dir = 'debug' + '_' + formatted_datetime
+        robot, parameters, re=re, log_dir='debug' + '_' + formatted_datetime
     )
 
     if input_path:
         print('start reading from old pickle file')
-        demo.voxel_map.read_from_pickle(filename = input_path)
+        demo.voxel_map.read_from_pickle(filename=input_path)
         print('finish reading from old pickle file')
 
-    # def send_image():
-    #     while True:
-    #         if robot.manip.get_joint_positions()[1] <= 0.5:
-    #             obs = robot.get_observation()
-    #             demo.image_sender.send_images(obs)
+    def send_image():
+        while True:
+            if robot.manip.get_joint_positions()[1] <= 0.5:
+                obs = robot.get_observation()
+                demo.image_sender.send_images(obs)
 
-    # img_thread = threading.Thread(target=send_image)
-    # img_thread.daemon = True
-    # img_thread.start()
+    img_thread = threading.Thread(target=send_image)
+    img_thread.daemon = True
+    img_thread.start()
 
-    
     while True:
-        # mode = input('select mode? E/N/S')
-        mode = 'N'
+        update_mode("Select Mode")
+        mode = input('Select mode? E/N/S: ').strip().upper()
         if mode == 'S':
+            update_mode_with_clear("Stopped")
             break
         if mode == 'E':
+            update_mode_with_clear("Exploration Mode Activated")
             robot.switch_to_navigation_mode()
             demo.run_exploration(
                 rate,
@@ -129,56 +157,37 @@ def main(
                 go_home_at_end=navigate_home,
                 visualize=show_intermediate_maps,
             )
-            if not os.path.exists(demo.log_dir):
-                os.mkdir(demo.log_dir)
-            pc_xyz, pc_rgb = demo.voxel_map.get_xyz_rgb()
-            torch.save(demo.voxel_map.voxel_pcd, demo.log_dir + '/memory.pt')
-            if len(output_pcd_filename) > 0:
-                print(f"Write pcd to {output_pcd_filename}...")
-                pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
-                open3d.io.write_point_cloud(demo.log_dir + '/' + output_pcd_filename, pcd)
-            if len(output_pkl_filename) > 0:
-                print(f"Write pkl to {output_pkl_filename}...")
-                demo.voxel_map.write_to_pickle(demo.log_dir + '/' + output_pkl_filename)
-        else:
-            robot.switch_to_navigation_mode()
-            text = input('Enter object name: ')
-            # point = demo.image_sender.query_text(text)
-            # if not demo.navigate(point):
-            #     continue
-            # cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
-            # robot.switch_to_navigation_mode()
-            # xyt = robot.nav.get_base_pose()
-            # xyt[2] = xyt[2] + np.pi / 2
-            # robot.nav.navigate_to(xyt)
-
-            if input('You want to run manipulation: y/n') == 'n':
-                continue
-            # camera_xyz = robot.head.get_pose()[:3, 3]
-            # theta = compute_tilt(camera_xyz, point)
-            theta = -0.6
-            demo.manipulate(text, theta)
-            
-            # robot.switch_to_navigation_mode()
-            # if input('You want to run placing: y/n') == 'n':
-            #     continue
-            text = input('Enter receptacle name: ')
-            # point = demo.image_sender.query_text(text)
-            # if not demo.navigate(point):
-            #     continue
-            # cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
-            # robot.switch_to_navigation_mode()
-            # xyt = robot.nav.get_base_pose()
-            # xyt[2] = xyt[2] + np.pi / 2
-            # robot.nav.navigate_to(xyt)
-        
-            if input('You want to run placing: y/n') == 'n':
-                continue
-            camera_xyz = robot.head.get_pose()[:3, 3]
-            # theta = compute_tilt(camera_xyz, point)
-            theta = -0.6
-            demo.place(text, theta)
-
+            clear_mode_display()
+        elif mode == 'N':
+            update_mode_with_clear("Navigation Mode Activated")
+            while True:
+                task = input('Pick or Place? ').strip().lower()
+                if task == 'pick':
+                    update_task("Pickup Mode Activated")
+                    clear_task_display_after_delay(5)  # Delay before clearing text
+                    text = input('Enter object name: ').strip()
+                    update_step("Object Specified", 5)
+                    if input('You want to run manipulation: y/n').strip().lower() == 'n':
+                        break
+                    update_step("Manipulation Begins", 20)
+                    theta = -0.6
+                    demo.manipulate(text, theta)
+                elif task == 'place':
+                    update_task("Place Mode Activated")
+                    clear_task_display_after_delay(5)  # Delay before clearing text
+                    text = input('Enter receptacle name: ').strip()
+                    update_place_step("Receptacle Specified", 5)
+                    if input('You want to run placing: y/n').strip().lower() == 'n':
+                        break
+                    camera_xyz = robot.head.get_pose()[:3, 3]
+                    theta = -0.6
+                    update_place_step("Place Operation Begins", 20)
+                    demo.place(text, theta)
+                else:
+                    print("Invalid task. Please choose 'Pick' or 'Place'.")
+            if input('Do you want to select a different mode? y/n: ').strip().lower() == 'n':
+                update_mode_with_clear("Stopped")
+                break
 
 if __name__ == "__main__":
     main()
