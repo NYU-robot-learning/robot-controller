@@ -55,6 +55,7 @@ class RobotAgentMDP:
         log_dir: str = 'debug'
     ):
         print('------------------------YOU ARE NOW RUNNING PEIQI CODES V3-----------------')
+        self.re = re
         self.log_dir = log_dir
         if isinstance(parameters, Dict):
             self.parameters = Parameters(**parameters)
@@ -157,7 +158,7 @@ class RobotAgentMDP:
             return False
         return True
 
-    def navigate(self, text, max_step = 50):
+    def navigate(self, text, max_step = 20):
         finished = False
         step = 0
         end_point = None

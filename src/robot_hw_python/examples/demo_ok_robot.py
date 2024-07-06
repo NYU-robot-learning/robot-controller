@@ -13,9 +13,11 @@ import rclpy
 import torch
 from PIL import Image
 
+# Mapping and perception
 from home_robot.agent.multitask import get_parameters
 from home_robot.agent.multitask import RobotAgentManip as RobotAgent
 
+# Chat and UI tools
 from home_robot.utils.point_cloud import numpy_to_pcd, show_point_cloud
 from robot_hw_python.remote import StretchClient
 
@@ -29,45 +31,32 @@ def compute_tilt(camera_xyz, target_xyz):
     return -np.arctan2(vector[2], np.linalg.norm(vector[:2]))
 
 def update_step(name, percentage):
-    url = 'http://localhost:5000/update_step'
+    url = 'http://10.19.247.197:5000/update_step'
     data = {'name': name, 'percentage': percentage}
     requests.post(url, json=data)
 
 def update_place_step(name, percentage):
-    url = 'http://localhost:5000/update_place_step'
+    url = 'http://10.19.247.197:5000/update_place_step'
     data = {'name': name, 'percentage': percentage}
     requests.post(url, json=data)
 
 def update_mode(mode):
-    url = 'http://localhost:5000/update_mode'
+    url = 'http://10.19.247.197:5000/update_mode'
     data = {'mode': mode}
     requests.post(url, json=data)
 
 def update_task(task):
-    url = 'http://localhost:5000/update_task'
+    url = 'http://10.19.247.197:5000/update_task'
     data = {'task': task}
     requests.post(url, json=data)
 
 def clear_mode_display():
-    url = 'http://localhost:5000/clear_mode_display'
+    url = 'http://10.19.247.197:5000/clear_mode_display'
     requests.post(url)
 
 def clear_task_display():
-    url = 'http://localhost:5000/clear_task_display'
+    url = 'http://10.19.247.197:5000/clear_task_display'
     requests.post(url)
-
-import threading
-
-def update_mode_with_clear(mode):
-    update_mode(mode)
-    threading.Timer(5, clear_mode_display).start()
-
-def update_task_with_clear(task):
-    update_task(task)
-    threading.Timer(5, clear_task_display).start()
-
-def clear_task_display_after_delay(delay):
-    threading.Timer(delay, clear_task_display).start()
 
 @click.command()
 @click.option("--rate", default=5, type=int)
@@ -144,10 +133,9 @@ def main(
         update_mode("Select Mode")
         mode = input('Select mode? E/N/S: ').strip().upper()
         if mode == 'S':
-            update_mode_with_clear("Stopped")
             break
         if mode == 'E':
-            update_mode_with_clear("Exploration Mode Activated")
+            update_mode("Exploration Mode Activated")
             robot.switch_to_navigation_mode()
             demo.run_exploration(
                 rate,
@@ -158,15 +146,26 @@ def main(
                 visualize=show_intermediate_maps,
             )
             clear_mode_display()
+            if not os.path.exists(demo.log_dir):
+                os.mkdir(demo.log_dir)
+            pc_xyz, pc_rgb = demo.voxel_map.get_xyz_rgb()
+            torch.save(demo.voxel_map.voxel_pcd, demo.log_dir + '/memory.pt')
+            if len(output_pcd_filename) > 0:
+                print(f"Write pcd to {output_pcd_filename}...")
+                pcd = numpy_to_pcd(pc_xyz, pc_rgb / 255)
+                open3d.io.write_point_cloud(demo.log_dir + '/' + output_pcd_filename, pcd)
+            if len(output_pkl_filename) > 0:
+                print(f"Write pkl to {output_pkl_filename}...")
+                demo.voxel_map.write_to_pickle(demo.log_dir + '/' + output_pkl_filename)
         elif mode == 'N':
-            update_mode_with_clear("Navigation Mode Activated")
+            update_mode("Navigation Mode Activated")
             while True:
                 task = input('Pick or Place? ').strip().lower()
                 if task == 'pick':
                     update_task("Pickup Mode Activated")
-                    clear_task_display_after_delay(5)  # Delay before clearing text
                     text = input('Enter object name: ').strip()
                     update_step("Object Specified", 5)
+                    clear_task_display()
                     if input('You want to run manipulation: y/n').strip().lower() == 'n':
                         break
                     update_step("Manipulation Begins", 20)
@@ -174,9 +173,9 @@ def main(
                     demo.manipulate(text, theta)
                 elif task == 'place':
                     update_task("Place Mode Activated")
-                    clear_task_display_after_delay(5)  # Delay before clearing text
                     text = input('Enter receptacle name: ').strip()
                     update_place_step("Receptacle Specified", 5)
+                    clear_task_display()
                     if input('You want to run placing: y/n').strip().lower() == 'n':
                         break
                     camera_xyz = robot.head.get_pose()[:3, 3]
@@ -186,7 +185,6 @@ def main(
                 else:
                     print("Invalid task. Please choose 'Pick' or 'Place'.")
             if input('Do you want to select a different mode? y/n: ').strip().lower() == 'n':
-                update_mode_with_clear("Stopped")
                 break
 
 if __name__ == "__main__":
