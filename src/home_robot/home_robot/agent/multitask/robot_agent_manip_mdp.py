@@ -57,6 +57,7 @@ class RobotAgentMDP:
         log_dir: str = 'debug'
     ):
         print('------------------------YOU ARE NOW RUNNING PEIQI CODES V3-----------------')
+        self.re = re
         self.log_dir = log_dir
         if isinstance(parameters, Dict):
             self.parameters = Parameters(**parameters)
@@ -218,7 +219,7 @@ class RobotAgentMDP:
         camera = RealSenseCamera(self.robot)
 
         time.sleep(2)
-        rotation, translation, _ = capture_and_process_image(
+        rotation, translation = capture_and_process_image(
             camera = camera,
             mode = 'place',
             obj = text,
