@@ -189,7 +189,7 @@ class RobotAgentMDP:
             return False
         return True
 
-    def navigate(self, text, max_step = 50):
+    def navigate(self, text, max_step = 20):
         finished = False
         step = 0
         end_point = None
