@@ -43,6 +43,8 @@ import time
 
 from home_robot.utils.point_cloud import numpy_to_pcd
 
+from scipy.ndimage import gaussian_filter, maximum_filter
+
 Frame = namedtuple(
     "Frame",
     [
@@ -606,21 +608,60 @@ class SparseVoxelMapVoxel(object):
                 **frame.info,
             )
 
+    def get_2d_alignment_heuristics(
+        self, voxel_map_localizer, text, debug: bool = False
+    ):
+        if voxel_map_localizer.voxel_pcd._points is None:
+            return None
+        # Convert metric measurements to discrete
+        # Gets the xyz correctly - for now everything is assumed to be within the correct distance of origin
+        xyz, _, _, _ = voxel_map_localizer.voxel_pcd.get_pointcloud()
+        if xyz is None:
+            xyz = torch.zeros((0, 3))
+
+        device = xyz.device
+        xyz = ((xyz / self.grid_resolution) + self.grid_origin).long()
+        xyz[xyz[:, -1] < 0, -1] = 0
+
+        # from home_robot.utils.point_cloud import show_point_cloud
+        # show_point_cloud(xyz, rgb, orig=np.zeros(3))
+        # xyz[xyz[:, -1] < 0, -1] = 0
+        # show_point_cloud(xyz, rgb, orig=np.zeros(3))
+
+        # Crop to robot height
+        min_height = int(self.obs_min_height / self.grid_resolution)
+        max_height = int(self.obs_max_height / self.grid_resolution)
+        grid_size = self.grid_size + [max_height]
+
+        # Mask out obstacles only above a certain height
+        obs_mask = xyz[:, -1] < max_height
+        xyz = xyz[obs_mask, :]
+        alignments = voxel_map_localizer.find_alignment_over_model(text)[0].detach().cpu()
+        alignments = alignments[obs_mask][:, None]
+
+        alignment_heuristics = scatter3d(xyz, alignments, grid_size, "max")
+        alignment_heuristics = torch.max(alignment_heuristics, dim=-1).values
+        alignment_heuristics = torch.from_numpy(maximum_filter(alignment_heuristics.numpy(), size = 7))
+        return alignment_heuristics
+
+
     def get_2d_map(
-        self, debug: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        self, debug: bool = False, return_history_id: bool = False
+    ) -> Tuple[np.ndarray, ...]:
         """Get 2d map with explored area and frontiers."""
 
         # Is this already cached? If so we don't need to go to all this work
-        if self._map2d is not None and self._seq == self._2d_last_updated:
-            return self._map2d
+        if self._map2d is not None and self._history_soft is not None and self._seq == self._2d_last_updated:
+            return self._map2d if not return_history_id else (*self._map2d, self._history_soft)
 
         # Convert metric measurements to discrete
         # Gets the xyz correctly - for now everything is assumed to be within the correct distance of origin
         xyz, _, counts, _ = self.voxel_pcd.get_pointcloud()
+        obs_ids = self.voxel_pcd._obs_counts
         if xyz is None:
             xyz = torch.zeros((0, 3))
             counts = torch.zeros((0))
+            obs_ids = torch.zeros((0))
 
         device = xyz.device
         xyz = ((xyz / self.grid_resolution) + self.grid_origin).long()
@@ -641,14 +682,20 @@ class SparseVoxelMapVoxel(object):
         obs_mask = xyz[:, -1] < max_height
         xyz = xyz[obs_mask, :]
         counts = counts[obs_mask][:, None]
+        obs_ids = obs_ids[obs_mask][:, None]
 
         # voxels[x_coords, y_coords, z_coords] = 1
         voxels = scatter3d(xyz, counts, grid_size)
+        history_ids = scatter3d(xyz, obs_ids, grid_size, "max")
 
         # Compute the obstacle voxel grid based on what we've seen
         obstacle_voxels = voxels[:, :, min_height:max_height]
         obstacles_soft = torch.sum(obstacle_voxels, dim=-1)
         obstacles = obstacles_soft > self.obs_min_density
+
+        history_ids = history_ids[:, :, min_height:max_height]
+        history_soft = torch.max(history_ids, dim=-1).values
+        history_soft = torch.from_numpy(maximum_filter(history_soft.float().numpy(), size = 5))
 
         if self._remove_visited_from_obstacles:
             # Remove "visited" points containing observations of the robot
@@ -729,7 +776,11 @@ class SparseVoxelMapVoxel(object):
         # Update cache
         self._map2d = (obstacles, explored)
         self._2d_last_updated = self._seq
-        return obstacles, explored
+        self._history_soft = history_soft
+        if not return_history_id:
+            return obstacles, explored
+        else:
+            return obstacles, explored, history_soft
 
     def xy_to_grid_coords(self, xy: torch.Tensor) -> Optional[np.ndarray]:
         """convert xy point to grid coords"""
@@ -766,7 +817,7 @@ class SparseVoxelMapVoxel(object):
 
     def grid_coords_to_xyt(self, grid_coords: np.ndarray) -> np.ndarray:
         """convert grid coordinate point to metric world xyt point"""
-        res = torch.zeros(3)
+        res = torch.ones(3)
         res[:2] = self.grid_coords_to_xy(grid_coords)
         return res
 

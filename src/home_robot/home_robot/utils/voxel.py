@@ -158,7 +158,7 @@ class VoxelizedPointcloud:
                         proj_depth < 0.01,
                         # depth is too large
                         # (~depth_is_valid)[valid_xys[:, 0], valid_xys[:, 1]],
-                        proj_depth > 2.5
+                        proj_depth > 2.0
                     ],
                     dim = 0
                 ),
@@ -532,7 +532,7 @@ def reduce_pointcloud(
 
 
 def scatter3d(
-    voxel_indices: Tensor, weights: Tensor, grid_dimensions: List[int]
+    voxel_indices: Tensor, weights: Tensor, grid_dimensions: List[int], method: str = "mean",
 ) -> Tensor:
     """Scatter weights into a 3d voxel grid of the appropriate size.
 
@@ -560,7 +560,7 @@ def scatter3d(
         weights,
         unique_voxel_indices,
         dim=0,
-        reduce="mean",
+        reduce=method,
         dim_size=grid_dimensions[0] * grid_dimensions[1] * grid_dimensions[2],
     )
     return voxel_weights.reshape(*grid_dimensions)

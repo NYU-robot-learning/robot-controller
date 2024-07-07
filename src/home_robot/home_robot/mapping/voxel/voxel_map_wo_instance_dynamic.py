@@ -585,6 +585,81 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
 
         return frontier, outside_frontier, traversible
 
+    def sample_exploration(
+        self,
+        xyt,
+        planner,
+        voxel_map_localizer = None,
+        text = None,
+        debug = False,
+    ):
+        obstacles, explored, history_soft = self.voxel_map.get_2d_map(return_history_id = True)
+        if len(xyt) == 3:  
+            xyt = xyt[:2]
+        reachable_points = planner.get_reachable_points(planner.to_pt(xyt))
+        reachable_xs, reachable_ys = zip(*reachable_points)
+        reachable_xs = torch.tensor(reachable_xs)
+        reachable_ys = torch.tensor(reachable_ys)
+
+        reachable_map = torch.zeros_like(obstacles)
+        reachable_map[reachable_xs, reachable_ys] = 1
+        reachable_map = reachable_map.to(torch.bool)
+        edges = get_edges(reachable_map)
+        # kernel = self._get_kernel(expand_size)
+        kernel = None
+        if kernel is not None:
+            expanded_frontier = binary_dilation(
+                edges.float().unsqueeze(0).unsqueeze(0),
+                kernel,
+            )[0, 0].bool()
+        else:
+            # This is a bad idea, planning will probably fail
+            expanded_frontier = edges
+        outside_frontier = expanded_frontier & ~reachable_map
+        time_heuristics = self._time_heuristic(history_soft, outside_frontier, debug = debug)
+        if voxel_map_localizer is not None:
+            alignments_heuristics = self.voxel_map.get_2d_alignment_heuristics(voxel_map_localizer, text)
+            alignments_heuristics = self._alignment_heuristic(alignments_heuristics, outside_frontier, debug = debug)
+            total_heuristics = time_heuristics + alignments_heuristics
+        else:
+            alignments_heuristics = None
+            total_heuristics = time_heuristics
+
+        rounded_heuristics = np.ceil(total_heuristics * 1000) / 1000
+        max_heuristic = rounded_heuristics.max()
+        indices = np.column_stack(np.where(rounded_heuristics == max_heuristic))
+        closest_index = np.argmin(np.linalg.norm(indices -  np.asarray(planner.to_pt(xyt)), axis = -1))
+        index = indices[closest_index]
+        # index = np.unravel_index(np.argmax(total_heuristics), total_heuristics.shape)
+        return index, time_heuristics, alignments_heuristics, total_heuristics
+        
+    def _alignment_heuristic(self, alignments, outside_frontier, alignment_smooth = 100, alignment_threshold = 0.07, debug = False):
+        alignments = np.ma.masked_array(alignments, ~outside_frontier)
+        alignment_heuristics = 1 / (1 + np.exp(-alignment_smooth * (alignments - alignment_threshold)))
+        index = np.unravel_index(np.argmax(alignment_heuristics), alignments.shape)
+        if debug:
+            plt.clf()
+            plt.title('alignment')
+            plt.imshow(alignment_heuristics)
+            plt.scatter(index[1], index[0], s = 15, c = 'g')
+            plt.show()
+        return alignment_heuristics
+
+    def _time_heuristic(self, history_soft, outside_frontier, time_smooth = 0.1, time_threshold = 100, debug = False):
+        history_soft = np.ma.masked_array(history_soft, ~outside_frontier)
+        time_heuristics = history_soft.max() - history_soft
+        time_heuristics[history_soft < 0.3] = float('inf')
+        time_heuristics = 1 / (1 + np.exp(-time_smooth * (time_heuristics - time_threshold)))
+        index = np.unravel_index(np.argmax(time_heuristics), history_soft.shape)
+        # return index
+        if debug:
+            plt.clf()
+            plt.title('time')
+            plt.imshow(time_heuristics)
+            plt.scatter(index[1], index[0], s = 15, c = 'r')
+            plt.show()
+        return time_heuristics
+
     def sample_closest_frontier(
         self,
         xyt: np.ndarray,
