@@ -14,7 +14,8 @@ from transformers import AutoProcessor, AutoModel
 
 from sklearn.cluster import DBSCAN
 
-from ultralytics import YOLOWorld
+# from ultralytics import YOLOWorld
+from transformers import Owlv2Processor, Owlv2ForObjectDetection
 
 def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
     # Calculate the number of top values directly
@@ -22,7 +23,7 @@ def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
     # top_values = probability_over_all_points[top_indices].flatten()
 
     # Apply DBSCAN clustering
-    dbscan = DBSCAN(eps=0.2, min_samples=2)
+    dbscan = DBSCAN(eps=0.25, min_samples=3)
     clusters = dbscan.fit(top_positions)
     labels = clusters.labels_
 
@@ -67,7 +68,7 @@ def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
 class VoxelMapLocalizer():
     def __init__(self, log = None, model_config = 'ViT-B/16', device = 'cuda', siglip = True):
         self.log = log
-        self.device = device
+        self.device = 'cuda'
         # self.clip_model, self.preprocessor = clip.load(model_config, device=device)
         self.siglip = siglip
         if not self.siglip:
@@ -78,7 +79,10 @@ class VoxelMapLocalizer():
             self.preprocessor = AutoProcessor.from_pretrained("google/siglip-base-patch16-224")
             self.clip_model.eval()
         self.voxel_pcd = VoxelizedPointcloud().to(self.device)
-        self.exist_model = YOLOWorld("yolov8l-worldv2.pt")
+        # self.exist_model = YOLOWorld("yolov8l-worldv2.pt")
+        self.exist_processor = AutoProcessor.from_pretrained("google/owlv2-base-patch16-ensemble")
+        self.exist_model = Owlv2ForObjectDetection.from_pretrained("google/owlv2-base-patch16-ensemble").to(self.device)
+        
 
     def add(self,
         points: Tensor,
@@ -105,6 +109,8 @@ class VoxelMapLocalizer():
             queries = [queries] 
         if self.siglip:
             inputs = self.preprocessor(text=queries, padding="max_length", return_tensors="pt")
+            for input in inputs:
+                inputs[input] = inputs[input].to(self.device)
             all_clip_tokens = self.clip_model.get_text_features(**inputs)
         else:
             text = clip.tokenize(queries).to(self.device)
@@ -152,13 +158,7 @@ class VoxelMapLocalizer():
         return obs_counts[alignments.argmax(dim = -1)].detach().cpu()
 
     def localize_A_v2(self, A, debug = True, return_debug = False):
-
-        text = '# Navigate to ' + str(A) + '\n'
-
         centroids, extends, similarity_max_list, points, obs_max_list, debug_text = self.find_clusters_for_A(A, return_obs_counts = True, debug = debug)
-        
-        text += debug_text
-
         if len(centroids) == 0:
             if not debug:
                 return None
@@ -167,16 +167,17 @@ class VoxelMapLocalizer():
         target_point = None
         obs = None
         similarity = None
-        for idx, (centroid, obs, similarity) in enumerate(sorted(zip(centroids, obs_max_list, similarity_max_list), key=lambda x: x[2], reverse=True)):
-            cosine_similarity_check = similarity > 0.1
+        point = None
+        for idx, (centroid, obs, similarity, point) in enumerate(sorted(zip(centroids, obs_max_list, similarity_max_list, points), key=lambda x: x[2], reverse=True)):
+            cosine_similarity_check = similarity > 0.085
             if cosine_similarity_check:
                 target_point = centroid
 
-                debug_text += '#### - Instance ' +  str(idx + 1) + ' has high cosine similarity. **😃** Directly navigate to it.\n'
+                debug_text += '#### - Instance ' +  str(idx + 1) + ' has high cosine similarity (' + str(round(similarity, 3)) +  '). **😃** Directly navigate to it.\n'
 
                 break
             else:
-                # debug_text += '#### - Instance ' +  str(idx + 1) + ' has low confidence. **😞** Double check past observations. \n'
+                debug_text += '#### - Instance ' +  str(idx + 1) + ' has low confidence(' + str(round(similarity, 3)) +  '). **😞** Double check past observations. \n'
                 detection_model_check = self.check_existence(A, obs)
                 if detection_model_check:
                     target_point = centroid
@@ -185,7 +186,7 @@ class VoxelMapLocalizer():
 
                     break
                 
-                # debug_text += '#### - Also not find target object in in past observations. **😞** \n'
+                debug_text += '#### - Also not find target object in in past observations. **😞** \n'
 
         if target_point is None:
             debug_text += '#### - All instances are not the target! Maybe target object has not been observed yet. **😭**\n'
@@ -194,18 +195,28 @@ class VoxelMapLocalizer():
         elif not return_debug:
             return target_point, debug_text
         else:
-            return target_point, debug_text, obs, similarity
+            return target_point, debug_text, obs, point
 
     def check_existence(self, text, obs_id):
         if obs_id <= 0:
             return False
         rgb = np.load(self.log + '/rgb' + str(obs_id) + '.npy')
-        rgb = rgb.astype(np.uint8)[:, :, [2, 1, 0]]
-        self.exist_model.set_classes([text])
-        results = self.exist_model.predict(rgb, conf=0.25, verbose=False)
-        xyxy_tensor = results[0].boxes.xyxy
-        # return len(xyxy_tensor) != 0
-        xyxys = xyxy_tensor.detach().cpu().numpy()
+        rgb = torch.from_numpy(rgb)
+        rgb = rgb.permute(2, 0, 1).to(torch.uint8)
+        inputs = self.exist_processor(text=[[text]], images=rgb, return_tensors="pt")
+        for input in inputs:
+            inputs[input] = inputs[input].to(self.device)
+        with torch.no_grad():
+            outputs = self.exist_model(**inputs)
+        target_sizes = torch.Tensor([rgb.size()[-2:]]).to(self.device)
+        results = self.exist_processor.post_process_object_detection(outputs=outputs, threshold=0.2, target_sizes=target_sizes)
+        xyxys = results[0]['boxes']
+        # rgb = rgb.astype(np.uint8)[:, :, [2, 1, 0]]
+        # self.exist_model.set_classes([text])
+        # results = self.exist_model.predict(rgb, conf=0.2, verbose=False)
+        # xyxy_tensor = results[0].boxes.xyxy
+        # # return len(xyxy_tensor) != 0
+        # xyxys = xyxy_tensor.detach().cpu().numpy()
         depth = np.load(self.log + '/depth' + str(obs_id) + '.npy')
         for xyxy in xyxys:
             w, h = depth.shape
@@ -223,7 +234,7 @@ class VoxelMapLocalizer():
         points, features, _, _ = self.voxel_pcd.get_pointcloud()
         alignments = self.find_alignment_over_model(A).cpu().reshape(-1).detach().numpy()
         # turning_point = max(np.percentile(alignments, 99), 0.08)
-        turning_point = min(0.1, alignments[np.argsort(alignments)[-15]])
+        turning_point = min(0.085, alignments[np.argsort(alignments)[-20]])
         mask = alignments >= turning_point
         alignments = alignments[mask]
         points = points[mask]

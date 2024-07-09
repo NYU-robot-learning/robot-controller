@@ -329,7 +329,6 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
         start: torch.Tensor,
         point: torch.Tensor,
         planner,
-        max_tries = 25,
     ) -> Optional[np.array]:
         """Sample a position near the mask and return.
 
@@ -633,7 +632,7 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
         # index = np.unravel_index(np.argmax(total_heuristics), total_heuristics.shape)
         return index, time_heuristics, alignments_heuristics, total_heuristics
         
-    def _alignment_heuristic(self, alignments, outside_frontier, alignment_smooth = 100, alignment_threshold = 0.07, debug = False):
+    def _alignment_heuristic(self, alignments, outside_frontier, alignment_smooth = 100, alignment_threshold = 0.06, debug = False):
         alignments = np.ma.masked_array(alignments, ~outside_frontier)
         alignment_heuristics = 1 / (1 + np.exp(-alignment_smooth * (alignments - alignment_threshold)))
         index = np.unravel_index(np.argmax(alignment_heuristics), alignments.shape)
@@ -645,7 +644,7 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
             plt.show()
         return alignment_heuristics
 
-    def _time_heuristic(self, history_soft, outside_frontier, time_smooth = 0.1, time_threshold = 100, debug = False):
+    def _time_heuristic(self, history_soft, outside_frontier, time_smooth = 0.1, time_threshold = 50, debug = False):
         history_soft = np.ma.masked_array(history_soft, ~outside_frontier)
         time_heuristics = history_soft.max() - history_soft
         time_heuristics[history_soft < 0.3] = float('inf')

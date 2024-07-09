@@ -197,8 +197,8 @@ class ImageProcessor:
         device = 'cuda',
         min_depth = 0.25,
         max_depth = 2.0,
-        img_port = 5555,
-        text_port = 5556,
+        img_port = 5560,
+        text_port = 5561,
         pcd_path: str = None,
         navigation_only = False,
         rerun = True
@@ -396,12 +396,15 @@ class ImageProcessor:
         # Do visual grounding
         if text != '':
             with self.voxel_map_lock:
-                localized_point, debug_text, obs, similarity = self.voxel_map_localizer.localize_A_v2(text, debug = True, return_debug = True)
+                localized_point, debug_text, obs, pointcloud = self.voxel_map_localizer.localize_A_v2(text, debug = True, return_debug = True)
+            if localized_point is not None:
+                rr.log("/object", rr.Points3D(localized_point, colors=torch.Tensor([1, 0, 0]), radii=0.15))
         # Do Frontier based exploration
         if text is None or text == '' or localized_point is None:
             debug_text += '## Navigation fails, so robot starts exploring environments.\n'
             localized_point = self.sample_frontier(start_pose, text)
             mode = 'exploration'
+            rr.log("/object", rr.Points3D([0, 0, 0], colors=torch.Tensor([1, 0, 0]), radii=0))
             print('\n', localized_point, '\n')
         
         if localized_point is None:
@@ -413,7 +416,7 @@ class ImageProcessor:
             localized_point = np.array([localized_point[0], localized_point[1], 0])
 
         point = self.sample_navigation(start_pose, localized_point)
-        if mode == 'navigation' and np.linalg.norm(np.asarray(localized_point)[:2] - np.asarray(point)[:2]) > 1.0:
+        if mode == 'navigation' and np.min(np.linalg.norm(np.asarray(localized_point)[:2] - np.asarray(pointcloud)[:, :2], axis = -1)) > 1.0:
             localized_point = self.sample_frontier(start_pose, None)
             mode = 'exploration'
             point = self.sample_navigation(start_pose, localized_point)
@@ -436,21 +439,22 @@ class ImageProcessor:
 
         if self.rerun:
             if text is not None and text != '':
-                debug_text = '# The goal is to navigate to ' + text + '.\n' + debug_text
+                debug_text = '## The goal is to navigate to **' + text + '**.\n' + debug_text
             else:
-                debug_text = '# The robot just looks around and does not need to navigate to anything.\n'
-            print(debug_text, localized_point, start_pose)
+                debug_text = '## The robot does not need to navigate to anything. It just looks around. \n'
             rr.log("explanation", rr.TextDocument(debug_text, media_type = rr.MediaType.MARKDOWN))
-            rr.log("/target", rr.Points3D([localized_point[0], start_pose[1], 2], colors=torch.Tensor([1, 0, 0]), radii=0.1))
-            rr.log("/start", rr.Points3D([start_pose[0], start_pose[1], 2], colors=torch.Tensor([0, 0, 1]), radii=0.1))
 
-        if obs is not None:
-            rgb = np.load(self.log + '/rgb' + str(int(self.voxel_map_localizer.find_obs_id_for_A(text).detach().cpu().item())) + '.npy')
+        if obs is not None and mode == 'navigation':
+            rgb = np.load(self.log + '/rgb' + str(obs) + '.npy')
             if not self.rerun:
                 cv2.imwrite(self.log + '/debug_' + text + '.png', rgb[:, :, [2, 1, 0]])
             else:
                 rr.log('/Memory_image', rr.Image(rgb))
+        else:
+            if self.rerun:
+                rr.log('/Memory_image', rr.Image(np.zeros((256, 256, 3))))
 
+        waypoints = None
         if point is None:
             print('Unable to find any target point, some exception might happen')
             send_array(self.text_socket, [])
@@ -477,8 +481,14 @@ class ImageProcessor:
             else:
                 print('[FAILURE]', res.reason)
                 send_array(self.text_socket, [])
+            
+        if waypoints is not None:
+            rr.log("/direction", rr.Arrows3D(origins = [start_pose[0], start_pose[1], 1.5], \
+                                            vectors = [waypoints[-1][0] - start_pose[0], waypoints[-1][1] - start_pose[1], 0]\
+                                                , colors=torch.Tensor([0, 1, 0]), radii=0.05))
+            rr.log("/start", rr.Points3D([start_pose[0], start_pose[1], 1.5], colors=torch.Tensor([0, 0, 1]), radii=0.1))
 
-    def sample_navigation(self, start, point, max_tries = 15):
+    def sample_navigation(self, start, point):
         plt.clf()
         obstacles, _ = self.voxel_map.get_2d_map()
         plt.imshow(obstacles)
@@ -486,16 +496,16 @@ class ImageProcessor:
             start_pt = self.planner.to_pt(start)
             plt.scatter(start_pt[1], start_pt[0], s = 10)
             return None
-        goal = self.space.sample_target_point(start, point, self.planner, max_tries)
+        goal = self.space.sample_target_point(start, point, self.planner)
         print("point:", point, "goal:", goal)
         obstacles, explored = self.voxel_map.get_2d_map()
         start_pt = self.planner.to_pt(start)
-        plt.scatter(start_pt[1], start_pt[0], s = 10)
+        plt.scatter(start_pt[1], start_pt[0], s = 15, c = 'b')
         point_pt = self.planner.to_pt(point)
-        plt.scatter(point_pt[1], point_pt[0], s = 10)
+        plt.scatter(point_pt[1], point_pt[0], s = 15, c = 'g')
         if goal is not None:
             goal_pt = self.planner.to_pt(goal)
-            plt.scatter(goal_pt[1], goal_pt[0], s = 10)
+            plt.scatter(goal_pt[1], goal_pt[0], s = 10, c = 'r')
         return goal
 
     def sample_frontier(self, start_pose = [0, 0, 0], text = None):
@@ -514,11 +524,12 @@ class ImageProcessor:
         #     #     print(" -> resample goal.")
         #     #     continue
         #     return goal
-        if text is not None and text != '':
-            index, time_heuristics, alignments_heuristics, total_heuristics = self.space.sample_exploration(start_pose, self.planner, self.voxel_map_localizer, text, debug = False)
-        else:
-            index, time_heuristics, _, total_heuristics = self.space.sample_exploration(start_pose, self.planner, None, None, debug = False)
-            alignments_heuristics = time_heuristics
+        with self.voxel_map_lock:
+            if text is not None and text != '':
+                index, time_heuristics, alignments_heuristics, total_heuristics = self.space.sample_exploration(start_pose, self.planner, self.voxel_map_localizer, text, debug = False)
+            else:
+                index, time_heuristics, _, total_heuristics = self.space.sample_exploration(start_pose, self.planner, None, None, debug = False)
+                alignments_heuristics = time_heuristics
                 
         obstacles, explored = self.voxel_map.get_2d_map()
         plt.clf()
@@ -880,20 +891,6 @@ class ImageProcessor:
 
                 print('Points are observed from the ', obs_id, 'th image')
 
-    def test_DBSCAN(self, text):
-        centroids, extends, similarity_max_list, target_points = self.voxel_map_localizer.find_clusters_for_A(text)
-        target_point = target_points[np.array(similarity_max_list).argmax()]
-        points, _, _, rgb = self.voxel_map_localizer.voxel_pcd.get_pointcloud()
-        # points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-        # points = np.concatenate((points, target_point))
-        # rgb = np.concatenate((rgb / 255, np.array([[1, 0, 0] for _ in range(len(target_point))])))
-        if not os.path.exists('debug'):
-            os.mkdir('debug')
-        pcd = numpy_to_pcd(points, rgb / 255)
-        o3d.io.write_point_cloud('debug/debug.pcd', pcd)
-        pcd = numpy_to_pcd(target_point, np.ones((len(target_point), 3)))
-        o3d.io.write_point_cloud('debug/' + text + '.pcd', pcd)
-
     def process_rgbd_images(self, rgb, depth, intrinsics, pose):
         if not os.path.exists(self.log):
             os.mkdir(self.log)
@@ -939,9 +936,11 @@ class ImageProcessor:
             rr.set_time_sequence("frame", self.obs_count)
             rr.log('robot_pov', rr.Image(rgb.permute(1, 2, 0)))
             if self.voxel_map.voxel_pcd._points is not None:
-                rr.log("Obstalce_map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points, colors=self.voxel_map.voxel_pcd._rgb / 255., radii=0.03))
+                rr.log("Obstalce_map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points.detach().cpu(), \
+                                                              colors=self.voxel_map.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03))
             if self.voxel_map_localizer.voxel_pcd._points is not None:
-                rr.log("Semantic_memory/pointcloud", rr.Points3D(self.voxel_map_localizer.voxel_pcd._points, colors=self.voxel_map_localizer.voxel_pcd._rgb / 255., radii=0.03))
+                rr.log("Semantic_memory/pointcloud", rr.Points3D(self.voxel_map_localizer.voxel_pcd._points.detach().cpu(), \
+                                                                 colors=self.voxel_map_localizer.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03))
             rr.log("Obstalce_map/2D_obs_map", rr.Image(obs.int() * 127 + exp.int() * 127))
         else:
             cv2.imwrite(self.log + '/debug_' + str(self.obs_count) + '.jpg', obs.int() * 127 + exp.int() * 127)
@@ -953,7 +952,7 @@ def main(cfg):
     if not cfg.load_folder is None:
         print('Loading ', cfg.load_number, ' images from ', cfg.load_folder)
         # ['schoolbag', 'toy drill', 'red bowl', 'green bowl', 'purple cup', 'red cup', 'white rag', 'red apple', 'yellow ball', 'green rag', 'orange sofa', 'orange tape']
-        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['schoolbag', 'toy drill', 'red bowl', 'purple cup', 'white rag', 'red apple', None, 'blue ball', 'green rag', 'orange sofa', 'orange tape'])
+        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['red bowl', 'green rag', 'green bowl', 'red cup', 'orange tape', 'toy drill', 'red packaging', 'purple body spray', 'red ball', 'wood carving', 'blue cup'])
     if not cfg.open_communication:
         imageProcessor.log = cfg.load_folder
         while True:

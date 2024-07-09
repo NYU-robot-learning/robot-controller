@@ -63,7 +63,7 @@ Frame = namedtuple(
 
 VALID_FRAMES = ["camera", "world"]
 
-DEFAULT_GRID_SIZE = [150, 150]
+DEFAULT_GRID_SIZE = [180, 180]
 
 logger = logging.getLogger(__name__)
 
@@ -616,6 +616,7 @@ class SparseVoxelMapVoxel(object):
         # Convert metric measurements to discrete
         # Gets the xyz correctly - for now everything is assumed to be within the correct distance of origin
         xyz, _, _, _ = voxel_map_localizer.voxel_pcd.get_pointcloud()
+        xyz = xyz.detach().cpu()
         if xyz is None:
             xyz = torch.zeros((0, 3))
 
@@ -774,6 +775,10 @@ class SparseVoxelMapVoxel(object):
             plt.show()
 
         # Update cache
+        obstacles[0:10, :] = True
+        obstacles[-10:, :] = True
+        obstacles[:, 0:10] = True
+        obstacles[:, -10:] = True
         self._map2d = (obstacles, explored)
         self._2d_last_updated = self._seq
         self._history_soft = history_soft
