@@ -189,11 +189,12 @@ class RobotAgentMDP:
             return False
         return True
 
-    def navigate(self, text, max_step = 20):
+    def navigate(self, text, max_step = 15):
         finished = False
         step = 0
         end_point = None
         while not finished and step < max_step:
+            print('*' * 20, step, '*' * 20)
             step += 1
             finished, end_point = self.execute_action(text) 
             if finished is None:
