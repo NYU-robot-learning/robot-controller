@@ -131,9 +131,9 @@ class VoxelizedPointcloud:
 
     def clear_points(self, depth, intrinsics, pose, depth_is_valid = None):
         if self._points is not None:
-            xys = project_points(self._points, intrinsics, pose).int()
+            xys = project_points(self._points.detach().cpu(), intrinsics, pose).int()
             xys = xys[:, [1, 0]]
-            proj_depth = get_depth_values(self._points, pose)
+            proj_depth = get_depth_values(self._points.detach().cpu(), pose)
             H, W = depth.shape
 
             # Some points are projected to (i, j) on image plane and i, j might be smaller than 0 or greater than image size
@@ -165,13 +165,14 @@ class VoxelizedPointcloud:
                 dim = 0)
 
             if self._entity_ids is not None:
-                removed_entities, removed_counts = torch.unique(self._entity_ids[~indices], return_counts = True)
-                total_counts = torch.bincount(self._entity_ids)
+                removed_entities, removed_counts = torch.unique(self._entity_ids.detach().cpu()[~indices], return_counts = True)
+                total_counts = torch.bincount(self._entity_ids.detach().cpu())
                 entities_to_be_removed = removed_entities[(removed_counts > total_counts[removed_entities] * 0.75) | (total_counts[removed_entities] - removed_counts < 5)]
-                indices = indices & ~torch.isin(self._entity_ids, entities_to_be_removed)
+                indices = indices & ~torch.isin(self._entity_ids.detach().cpu(), entities_to_be_removed)
         
             print('Clearing non valid points...')
             print('Removing ' + str((~indices).sum().item()) + ' points.')
+            indices = indices.to(self._points.device)
             self._points = self._points[indices]
             if self._features is not None:
                 self._features = self._features[indices]
