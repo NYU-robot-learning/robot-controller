@@ -31,31 +31,31 @@ def compute_tilt(camera_xyz, target_xyz):
     return -np.arctan2(vector[2], np.linalg.norm(vector[:2]))
 
 def update_step(name, percentage):
-    url = 'http://10.19.247.197:5000/update_step'
+    url = 'http://10.87.357.453:5000/update_step'
     data = {'name': name, 'percentage': percentage}
     requests.post(url, json=data)
 
 def update_place_step(name, percentage):
-    url = 'http://10.19.247.197:5000/update_place_step'
+    url = 'http://10.87.357.453:5000/update_place_step'
     data = {'name': name, 'percentage': percentage}
     requests.post(url, json=data)
 
 def update_mode(mode):
-    url = 'http://10.19.247.197:5000/update_mode'
+    url = 'http://10.87.357.453:5000/update_mode'
     data = {'mode': mode}
     requests.post(url, json=data)
 
 def update_task(task):
-    url = 'http://10.19.247.197:5000/update_task'
+    url = 'http://10.87.357.453:5000/update_task'
     data = {'task': task}
     requests.post(url, json=data)
 
 def clear_mode_display():
-    url = 'http://10.19.247.197:5000/clear_mode_display'
+    url = 'http://10.87.357.453:5000/clear_mode_display'
     requests.post(url)
 
 def clear_task_display():
-    url = 'http://10.19.247.197:5000/clear_task_display'
+    url = 'http://10.87.357.453:5000/clear_task_display'
     requests.post(url)
 
 @click.command()
@@ -158,11 +158,10 @@ def main(
                 print(f"Write pkl to {output_pkl_filename}...")
                 demo.voxel_map.write_to_pickle(demo.log_dir + '/' + output_pkl_filename)
         elif mode == 'N':
-            update_mode("Navigation Mode Activated")
             while True:
                 task = input('Pick or Place? ').strip().lower()
                 if task == 'pick':
-                    update_task("Pickup Mode Activated")
+                    update_task("Pickup Mode")
                     text = input('Enter object name: ').strip()
                     update_step("Object Specified", 5)
                     clear_task_display()
@@ -172,7 +171,7 @@ def main(
                     theta = -0.6
                     demo.manipulate(text, theta)
                 elif task == 'place':
-                    update_task("Place Mode Activated")
+                    update_task("Place Mode")
                     text = input('Enter receptacle name: ').strip()
                     update_place_step("Receptacle Specified", 5)
                     clear_task_display()
