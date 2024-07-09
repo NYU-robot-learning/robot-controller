@@ -444,7 +444,7 @@ class ImageProcessor:
                 debug_text = '## The robot does not need to navigate to anything. It just looks around. \n'
             rr.log("explanation", rr.TextDocument(debug_text, media_type = rr.MediaType.MARKDOWN))
 
-        if obs is not None:
+        if obs is not None and mode == 'navigation':
             rgb = np.load(self.log + '/rgb' + str(obs) + '.npy')
             if not self.rerun:
                 cv2.imwrite(self.log + '/debug_' + text + '.png', rgb[:, :, [2, 1, 0]])
