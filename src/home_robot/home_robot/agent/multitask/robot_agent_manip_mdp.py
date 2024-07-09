@@ -76,7 +76,7 @@ class RobotAgentMDP:
         self.robot.move_to_nav_posture()
 
         self.normalize_embeddings = True
-        self.pos_err_threshold = 0.2
+        self.pos_err_threshold = 0.3
         self.rot_err_threshold = 0.4
         self.obs_count = 0
         self.obs_history = []
@@ -382,8 +382,8 @@ class ImageSender:
     def __init__(self, 
         stop_and_photo = False, 
         ip = '172.24.71.227', 
-        image_port = 5555,
-        text_port = 5556,
+        image_port = 5560,
+        text_port = 5561,
         manip_port = 5557,
         color_name = "/camera/color",
         depth_name = "/camera/aligned_depth_to_color",
