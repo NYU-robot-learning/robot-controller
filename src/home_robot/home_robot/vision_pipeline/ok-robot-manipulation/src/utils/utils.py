@@ -85,7 +85,7 @@ def color_grippers(grippers, max_score, min_score):
 def visualize_cloud_geometries(cloud, geometries, translation = None, rotation = None, visualize = True, save_file = None):
     """
         cloud       : Point cloud of points
-        grippers    : list of grippers of form graspnetAPI grasps
+        geometries    : list of grippers of form graspnetAPI grasps
         visualise   : To show windows
         save_file   : Visualisation file name
     """

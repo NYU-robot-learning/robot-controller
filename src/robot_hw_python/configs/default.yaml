@@ -9,16 +9,16 @@ voxel_size: 0.1
 # 0.05 seems too low
 obs_min_height: 0.1  # Ignore things less than this high when planning motions
 obs_max_height: 1.5  # Ignore things over this height (eg ceilings)
-obs_min_density: 50  # This many points makes it an obstacle
-exp_min_density: 5
+obs_min_density: 20  # This many points makes it an obstacle
+exp_min_density: 1
 
 # Padding
 pad_obstacles: 2  # Add this many units (voxel_size) to the area around obstacles
 min_pad_obstacles: 1  # Do not pad LESS than this amount, for safety.
 
-local_radius: 0.8  # Area around the robot to mark as explored (kind of a hack)
+local_radius: 0.5  # Area around the robot to mark as explored (kind of a hack)
 remove_visited_from_obstacles: False
-min_depth: 0.1
+min_depth: 0.25
 max_depth: 2.0
 
 # Point cloud cleanup

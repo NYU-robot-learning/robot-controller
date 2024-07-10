@@ -91,6 +91,7 @@ def main(
     if explore_iter >= 0:
         parameters["exploration_steps"] = explore_iter
     object_to_find, location_to_place = None, None
+    robot.nav.set_velocity(v = 15., w = 8.)
     robot.move_to_nav_posture()
 
     print("- Start robot agent with data collection")
@@ -109,7 +110,8 @@ def main(
             break
         if mode == 'E':
             robot.switch_to_navigation_mode()
-            for _ in range(10):
+            for epoch in range(10):
+                print('\n', 'Exploration epoch ', epoch, '\n')
                 if not demo.run_exploration():
                     print('Exploration failed! Quitting!')
                     break

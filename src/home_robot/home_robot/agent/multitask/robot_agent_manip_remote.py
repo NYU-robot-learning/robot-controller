@@ -64,9 +64,9 @@ class RemoteRobotAgentManip:
         else:
             raise RuntimeError(f"parameters of unsupported type: {type(parameters)}")
         self.robot = robot
+        end_link = "link_straight_gripper"
         if re == 1:
             stretch_gripper_max = 0.3
-            end_link = "link_straight_gripper"
         else:
             stretch_gripper_max = 0.64
             end_link = "link_straight_gripper"
