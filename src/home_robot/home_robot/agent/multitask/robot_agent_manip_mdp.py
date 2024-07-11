@@ -43,6 +43,9 @@ from home_robot.agent.multitask.ok_robot_hw.utils.communication_utils import sen
 
 import cv2
 
+import threading
+from multiprocessing import Process
+
 class RobotAgentMDP:
     """Basic demo code. Collects everything that we need to make this work."""
 
@@ -91,6 +94,8 @@ class RobotAgentMDP:
         
         timestamp = f"{datetime.datetime.now():%Y-%m-%d-%H-%M-%S}"
 
+        # self.head_lock = threading.Lock()
+
     def get_navigation_space(self) -> ConfigurationSpace:
         """Returns reference to the navigation space."""
         return self.space
@@ -118,6 +123,61 @@ class RobotAgentMDP:
         self.obs_count += 1
         self.image_sender.send_images(obs)
 
+    # def look_around_wrapper(self):
+    #     # self.robot.head.look_front()
+    #     for _ in range(4):
+    #         self.update()
+    #     # self.robot.head.look_front()
+    #     self.robot.switch_to_navigation_mode()
+
+    # def move_robot_wrapper(self, res, return_value):
+    #     if len(res) > 0:
+    #         print("Plan successful!")
+    #         if len(res) > 2 and np.isnan(res[-2]).all():
+    #             blocking = text != ''
+    #             self.robot.execute_trajectory(
+    #                 res[:-2],
+    #                 pos_err_threshold=self.pos_err_threshold,
+    #                 rot_err_threshold=self.rot_err_threshold,
+    #                 blocking = True
+    #             )
+
+    #             return_value.append((True, res[-1]))
+    #         else:
+    #             self.robot.execute_trajectory(
+    #                 res,
+    #                 pos_err_threshold=self.pos_err_threshold,
+    #                 rot_err_threshold=self.rot_err_threshold,
+    #                 blocking = False
+    #             )
+
+    #             return_value.append((False, None))
+    #     else:
+    #         print("Failed. Try again!")
+    #         return_value.append((None, None)) 
+
+    # def execute_action(
+    #     self,
+    #     text: str,
+    # ):
+    #     start = self.robot.get_base_pose()
+    #     print("       Start:", start)
+    #     res = self.image_sender.query_text(text, start)  
+
+    #     return_value = []
+
+    #     p1 = Process(target=self.look_around_wrapper)
+    #     p2 = Process(target=self.move_robot_wrapper, args = (res, return_value))
+
+    #     p1.start()
+    #     p2.start()
+
+    #     p1.join()
+    #     p2.join()
+
+    #     return return_value[0]
+
+
     def execute_action(
         self,
         text: str,
@@ -143,10 +203,12 @@ class RobotAgentMDP:
         if len(res) > 0:
             print("Plan successful!")
             if len(res) > 2 and np.isnan(res[-2]).all():
+                blocking = text != ''
                 self.robot.execute_trajectory(
                     res[:-2],
                     pos_err_threshold=self.pos_err_threshold,
                     rot_err_threshold=self.rot_err_threshold,
+                    blocking = True
                 )
 
                 execution_finish = time.time()
@@ -162,6 +224,7 @@ class RobotAgentMDP:
                     res,
                     pos_err_threshold=self.pos_err_threshold,
                     rot_err_threshold=self.rot_err_threshold,
+                    blocking = False
                 )
 
                 execution_finish = time.time()

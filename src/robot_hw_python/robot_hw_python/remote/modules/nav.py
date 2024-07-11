@@ -134,6 +134,7 @@ class StretchNavigationClient(AbstractControlModule):
         verbose: bool = False,
         per_waypoint_timeout: float = 10.0,
         relative: bool = False,
+        blocking: bool = True
     ):
         """Execute a multi-step trajectory; this is always blocking since it waits to reach each one in turn."""
         for i, pt in enumerate(trajectory):
@@ -150,7 +151,7 @@ class StretchNavigationClient(AbstractControlModule):
                 verbose=verbose,
                 timeout=per_waypoint_timeout,
             )
-        self.navigate_to(pt, blocking=True)
+        self.navigate_to(pt, blocking=blocking)
 
     @enforce_enabled
     def set_velocity(self, v, w):

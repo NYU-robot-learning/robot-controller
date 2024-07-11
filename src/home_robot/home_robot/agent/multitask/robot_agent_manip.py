@@ -127,7 +127,6 @@ class RobotAgentManip:
         self.space = SparseVoxelMapNavigationSpace(
             self.voxel_map,
             self.robot.get_robot_model(),
-            step_size=parameters["step_size"],
             rotation_step_size=parameters["rotation_step_size"],
             dilate_frontier_size=parameters[
                 "dilate_frontier_size"
