@@ -309,15 +309,15 @@ class RobotAgentMDP:
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
         self.manip_wrapper.move_to_position(lift_pos = self.manip_wrapper.robot.manip.get_joint_positions()[1] + 0.3)
         self.manip_wrapper.move_to_position(wrist_roll = 2.5)
-        time.sleep(1.5)
+        time.sleep(0.8)
         self.manip_wrapper.move_to_position(wrist_roll = -2.5)
-        time.sleep(1.5)
+        time.sleep(0.8)
 
         # Wait for some time and shrink the arm back
         self.manip_wrapper.move_to_position(gripper_pos=1, 
                                 lift_pos = 1.05,
                                 arm_pos = 0)
-        time.sleep(3)
+        time.sleep(2)
         self.manip_wrapper.move_to_position(wrist_pitch=-1.57)
 
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
