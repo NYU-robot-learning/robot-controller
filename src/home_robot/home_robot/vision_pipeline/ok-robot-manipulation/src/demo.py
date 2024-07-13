@@ -3,6 +3,7 @@ import sys
 import os
 
 from anygrasp_manipulation import ObjectHandler
+import rerun as rr
 
 FAIL_COLOR = "\033[91m"
 NO_LICENSE_MSG = f"""
@@ -62,6 +63,8 @@ def check_license_folder():
 def demo():
     # Checking the proper license folder placement.
     check_license_folder()
+    # rr.init('Demo', spawn = False)
+    # rr.connect('100.108.67.79:9876')
 
     object_handler = ObjectHandler(cfgs)
     while True:

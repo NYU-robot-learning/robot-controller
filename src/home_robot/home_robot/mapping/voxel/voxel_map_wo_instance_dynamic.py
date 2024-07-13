@@ -386,7 +386,7 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
             target_is_valid = self.is_valid([selected_x, selected_y, theta])
             print('Target:', [selected_x, selected_y, theta])
             print('Target is valid:', target_is_valid)
-            if target_is_valid:
+            if target_is_valid and np.linalg.norm([selected_x - point[0], selected_y - point[1]]) >= 0.4:
                 return np.array([selected_x, selected_y, theta])
         return None
 
@@ -632,7 +632,7 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
         # index = np.unravel_index(np.argmax(total_heuristics), total_heuristics.shape)
         return index, time_heuristics, alignments_heuristics, total_heuristics
         
-    def _alignment_heuristic(self, alignments, outside_frontier, alignment_smooth = 100, alignment_threshold = 0.06, debug = False):
+    def _alignment_heuristic(self, alignments, outside_frontier, alignment_smooth = 100, alignment_threshold = 0.05, debug = False):
         alignments = np.ma.masked_array(alignments, ~outside_frontier)
         alignment_heuristics = 1 / (1 + np.exp(-alignment_smooth * (alignments - alignment_threshold)))
         index = np.unravel_index(np.argmax(alignment_heuristics), alignments.shape)
