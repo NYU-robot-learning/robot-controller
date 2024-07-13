@@ -296,14 +296,10 @@ class RobotAgentMDP:
 
         # lift arm to the top before the robot extends the arm, prepare the pre-placing gripper pose
         self.manip_wrapper.move_to_position(lift_pos=1.05)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[1] - 1.05) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(1.5)
         self.manip_wrapper.move_to_position(wrist_yaw=0,
                                  wrist_pitch=0)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[3] - 0) < 0.05 and abs(robot.robot.manip.get_joint_positions()[4] - 0) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(1.5)
 
         # Placing the object
         move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
@@ -313,25 +309,16 @@ class RobotAgentMDP:
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
         self.manip_wrapper.move_to_position(lift_pos = self.manip_wrapper.robot.manip.get_joint_positions()[1] + 0.3)
         self.manip_wrapper.move_to_position(wrist_roll = 3.)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[5] - 3) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(0.8)
         self.manip_wrapper.move_to_position(wrist_roll = -3.)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[5] - (-3)) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(0.8)
 
         # Wait for some time and shrink the arm back
         self.manip_wrapper.move_to_position(gripper_pos=1, 
                                 lift_pos = 1.05,
                                 arm_pos = 0)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[1] - 1.05) < 0.05 and abs(robot.robot.manip.get_joint_positions()[2] - 0) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(2)
         self.manip_wrapper.move_to_position(wrist_pitch=-1.57)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[4] - (-1.57)) < 0.05 and abs(robot.robot.manip.get_joint_positions()[2] - 0) < 0.05 and time.time() - start_time < 2.5:
-            continue
 
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])

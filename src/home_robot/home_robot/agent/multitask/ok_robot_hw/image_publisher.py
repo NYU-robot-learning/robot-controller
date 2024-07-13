@@ -2,7 +2,7 @@ import zmq
 import numpy as np
 from PIL import Image as PILImage
 
-from home_robot.agent.multitask.ok_robot_hw.utils.communication_utils import send_array, recv_array
+from home_robot.agent.multitask.ok_robot_hw.utils.communication_utils import send_array, recv_array, send_depth_img, recv_depth_img, send_rgb_img,  recv_rgb_img
 
 class ImagePublisher():
 
@@ -21,10 +21,14 @@ class ImagePublisher():
         np.save("./test_depth", rotated_depth)
 
         ## Send RGB, depth and camera intrinsics data
-        send_array(self.socket, rotated_image)
+        send_rgb_img(self.socket, rotated_image)
         print(self.socket.recv_string())
-        send_array(self.socket, rotated_depth)
+        send_depth_img(self.socket, rotated_depth)
         print(self.socket.recv_string()) 
+        # send_array(self.socket, rotated_image)
+        # print(self.socket.recv_string())
+        # send_array(self.socket, rotated_depth)
+        # print(self.socket.recv_string()) 
         send_array(self.socket, np.array([self.camera.fy, self.camera.fx, self.camera.cy, self.camera.cx, int(head_tilt*100)]))
         print(self.socket.recv_string())
 
