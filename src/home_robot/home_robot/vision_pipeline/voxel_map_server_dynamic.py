@@ -201,14 +201,17 @@ class ImageProcessor:
         text_port = 5561,
         pcd_path: str = None,
         navigation_only = False,
-        rerun = True
+        rerun = True,
+        static = True
     ):
+        self.static = static
         self.siglip = siglip
         current_datetime = datetime.datetime.now()
         self.log = 'debug_' + current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
         self.rerun = rerun
         if self.rerun:
-            rr.init(self.log, spawn = True)
+            rr.init(self.log, spawn = False)
+            rr.connect('100.108.67.79:9876')
         self.min_depth = min_depth
         self.max_depth = max_depth
         self.obs_count = 0
@@ -388,23 +391,34 @@ class ImageProcessor:
         self.text_socket.send_string('Text recevied, waiting for robot pose')
         start_pose = recv_array(self.text_socket)
         if self.rerun:
-            rr.set_time_sequence("frame", self.obs_count)
+            if self.static:
+                rr.set_time_sequence("frame", self.obs_count)
+            rr.log('/object', rr.Clear(recursive = True), static = self.static)
+            rr.log('/robot_start_pose', rr.Clear(recursive = True), static = self.static)
+            rr.log('/direction', rr.Clear(recursive = True), static = self.static)
+            rr.log('robot_monologue', rr.Clear(recursive = True), static = self.static)
+            rr.log('/Past_observation_most_similar_to_text', rr.Clear(recursive = True), static = self.static)
+            rr.connect('100.108.67.79:9876')
 
         debug_text = ''
         mode = 'navigation'
         obs = None
         # Do visual grounding
         if text != '':
+            # with self.voxel_map_lock:
+            #     localized_point, debug_text, obs, pointcloud = self.voxel_map_localizer.localize_A_v2(text, debug = True, return_debug = True)
             with self.voxel_map_lock:
-                localized_point, debug_text, obs, pointcloud = self.voxel_map_localizer.localize_A_v2(text, debug = True, return_debug = True)
+                localized_point = self.voxel_map_localizer.localize_AonB(text)
+                obs = self.voxel_map_localizer.find_obs_id_for_A(text).item()
+                debug_text = None
             if localized_point is not None:
-                rr.log("/object", rr.Points3D(localized_point, colors=torch.Tensor([1, 0, 0]), radii=0.15))
+                rr.log("/object", rr.Points3D([localized_point[0], localized_point[1], 1.5], colors=torch.Tensor([1, 0, 0]), radii=0.1), static = self.static)
         # Do Frontier based exploration
         if text is None or text == '' or localized_point is None:
             debug_text += '## Navigation fails, so robot starts exploring environments.\n'
             localized_point = self.sample_frontier(start_pose, text)
             mode = 'exploration'
-            rr.log("/object", rr.Points3D([0, 0, 0], colors=torch.Tensor([1, 0, 0]), radii=0))
+            rr.log("/object", rr.Points3D([0, 0, 0], colors=torch.Tensor([1, 0, 0]), radii=0), static = self.static)
             print('\n', localized_point, '\n')
         
         if localized_point is None:
@@ -416,11 +430,11 @@ class ImageProcessor:
             localized_point = np.array([localized_point[0], localized_point[1], 0])
 
         point = self.sample_navigation(start_pose, localized_point)
-        if mode == 'navigation' and np.min(np.linalg.norm(np.asarray(localized_point)[:2] - np.asarray(pointcloud)[:, :2], axis = -1)) > 1.0:
-            localized_point = self.sample_frontier(start_pose, None)
-            mode = 'exploration'
-            point = self.sample_navigation(start_pose, localized_point)
-            debug_text += '## All reachable points of robot are too far from the target object, explore to find new paths. \n'
+        # if mode == 'navigation' and np.min(np.linalg.norm(np.asarray(localized_point)[:2] - np.asarray(pointcloud)[:, :2], axis = -1)) > 1.0:
+        #     localized_point = self.sample_frontier(start_pose, None)
+        #     mode = 'exploration'
+        #     point = self.sample_navigation(start_pose, localized_point)
+        #     debug_text += '## All reachable points of robot are too far from the target object, explore to find new paths. \n'
 
         if self.rerun:
             buf = BytesIO()
@@ -429,7 +443,7 @@ class ImageProcessor:
             img = Image.open(buf)
             img = np.array(img)
             buf.close()
-            rr.log('2d_map', rr.Image(img))
+            rr.log('2d_map', rr.Image(img), static = self.static)
         else:
             if text != '':
                 plt.savefig(self.log + '/debug_' + text + str(self.obs_count) + '.png')
@@ -438,21 +452,26 @@ class ImageProcessor:
         plt.clf()
 
         if self.rerun:
-            if text is not None and text != '':
-                debug_text = '## The goal is to navigate to **' + text + '**.\n' + debug_text
+            # if text is not None and text != '':
+            #     debug_text = '## The goal is to navigate to **' + text + '**.\n' + debug_text
+            # else:
+            #     debug_text = '## The robot does not need to navigate to anything. It just looks around. \n'
+            if text != '':
+                debug_text = '### The goal is to navigate to ' + text + '.\n ### I displayed the past observation most similar to ' + text + '  on the screen.\n ### I will navigate to it following paths generated by A* planner. \n ### The path is visualized on the pointcloud'
             else:
-                debug_text = '## The robot does not need to navigate to anything. It just looks around. \n'
-            rr.log("explanation", rr.TextDocument(debug_text, media_type = rr.MediaType.MARKDOWN))
+                debug_text = '### I have not received any text query from human user.\n ### So, I plan to explore the environment with Frontier-based exploration.\n'
+            debug_text = '# Robot\'s monologue: \n' + debug_text
+            rr.log("robot_monologue", rr.TextDocument(debug_text, media_type = rr.MediaType.MARKDOWN), static = self.static)
 
         if obs is not None and mode == 'navigation':
             rgb = np.load(self.log + '/rgb' + str(obs) + '.npy')
             if not self.rerun:
                 cv2.imwrite(self.log + '/debug_' + text + '.png', rgb[:, :, [2, 1, 0]])
             else:
-                rr.log('/Memory_image', rr.Image(rgb))
-        else:
-            if self.rerun:
-                rr.log('/Memory_image', rr.Image(np.zeros((256, 256, 3))))
+                rr.log('/Past_observation_most_similar_to_text', rr.Image(rgb), static = self.static)
+        # else:
+        #     if self.rerun:
+        #         rr.log('/Past_observation_most_similar_to_text', rr.Image(np.zeros((256, 256, 3))), static = self.static)
 
         waypoints = None
         if point is None:
@@ -466,7 +485,8 @@ class ImageProcessor:
                 # If we are navigating to some object of interst, send (x, y, z) of 
                 # the object so that we can make sure the robot looks at the object after navigation
                 print(waypoints[-1][:2], start_pose[:2])
-                finished = len(waypoints) <= 10 and mode == 'navigation'
+                # finished = len(waypoints) <= 10 and mode == 'navigation'
+                finished = mode == 'navigation'
                 if not finished:
                     waypoints = waypoints[:7]
                 traj = self.planner.clean_path_for_xy(waypoints)
@@ -482,11 +502,15 @@ class ImageProcessor:
                 print('[FAILURE]', res.reason)
                 send_array(self.text_socket, [])
             
-        if waypoints is not None:
-            rr.log("/direction", rr.Arrows3D(origins = [start_pose[0], start_pose[1], 1.5], \
-                                            vectors = [waypoints[-1][0] - start_pose[0], waypoints[-1][1] - start_pose[1], 0]\
-                                                , colors=torch.Tensor([0, 1, 0]), radii=0.05))
-            rr.log("/start", rr.Points3D([start_pose[0], start_pose[1], 1.5], colors=torch.Tensor([0, 0, 1]), radii=0.1))
+        if traj is not None:
+            origins = []
+            vectors = []
+            for idx in range(len(traj)):
+                if idx != len(traj) - 1:
+                    origins.append([traj[idx][0], traj[idx][1], 1.5])
+                    vectors.append([traj[idx + 1][0] - traj[idx][0], traj[idx + 1][1] - traj[idx][1], 0])
+            rr.log("/direction", rr.Arrows3D(origins = origins, vectors = vectors, colors=torch.Tensor([0, 1, 0]), radii=0.05), static = self.static)
+            rr.log("/robot_start_pose", rr.Points3D([start_pose[0], start_pose[1], 1.5], colors=torch.Tensor([0, 0, 1]), radii=0.1), static = self.static)
 
     def sample_navigation(self, start, point):
         plt.clf()
@@ -659,18 +683,34 @@ class ImageProcessor:
             image_vis = cv2.addWeighted(image_vis, 0.7, segmentation_color_map, 0.3, 0)
             if not self.rerun:
                 cv2.imwrite(self.log + "/seg" + str(self.obs_count) + ".jpg", image_vis)
-            else:
-                rr.log('Segmentation mask', rr.Image(image_vis[:, :, [2, 1, 0]]))
+            # else:
+            #     rr.log('Segmentation mask', rr.Image(image_vis[:, :, [2, 1, 0]]))
     
             crops = []
             if not self.siglip:
-                for box in bounding_boxes:
+                for (box, mask) in zip(bounding_boxes, masks):
                     tl_x, tl_y, br_x, br_y = box
+                    # tl_x -= 20
+                    # tl_y -= 20
+                    # br_x += 20
+                    # br_y += 20
+                    # crop_image = rgb.clone()
+                    # crop_image[:, ~mask] = 0
+                    # crop_image = crop_image[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])]
+                    # crops.append(self.clip_preprocess(transforms.ToPILImage()(crop_image)))
                     crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
                 features = self.clip_model.encode_image(torch.stack(crops, dim = 0).to(self.device))
             else:
                 for box in bounding_boxes:
                     tl_x, tl_y, br_x, br_y = box
+                    # tl_x -= 20
+                    # tl_y -= 20
+                    # br_x += 20
+                    # br_y += 20
+                    # crop_image = rgb.clone()
+                    # crop_image[:, ~mask] = 0
+                    # crop_image = crop_image[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])]
+                    # crops.append(transforms.ToPILImage()(crop_image))
                     crops.append(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])
                 inputs = self.clip_preprocess(images = crops, padding="max_length", return_tensors="pt").to(self.device)
                 features = self.clip_model.get_image_features(**inputs)
@@ -704,6 +744,11 @@ class ImageProcessor:
 
         for idx, (sam_mask, feature) in enumerate(zip(masks.cpu(), features.cpu())):
             valid_mask = torch.logical_and(~mask, sam_mask)
+            # valid_mask = valid_mask.detach().cpu().numpy().astype(np.uint8)
+            # kernel_size = 5
+            # kernel = np.ones((kernel_size, kernel_size), np.uint8)
+            # valid_mask = torch.from_numpy(cv2.erode(valid_mask, kernel, iterations=1))
+
             # Debug code, check whether every mask makes sense
 
             # plt.subplot(2, 2, 1)
@@ -789,9 +834,11 @@ class ImageProcessor:
             if self.rerun:
                 rr.set_time_sequence("frame", self.obs_count)
                 if self.voxel_map.voxel_pcd._points is not None:
-                    rr.log("Obstalce_map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points, colors=self.voxel_map.voxel_pcd._rgb / 255., radii=0.03))
+                    rr.log("Obstalce_map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points.detach().cpu(), \
+                                                              colors=self.voxel_map.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03))
                 if self.voxel_map_localizer.voxel_pcd._points is not None:
-                    rr.log("Semantic_memory/pointcloud", rr.Points3D(self.voxel_map_localizer.voxel_pcd._points, colors=self.voxel_map_localizer.voxel_pcd._rgb / 255., radii=0.03))
+                    rr.log("Semantic_memory/pointcloud", rr.Points3D(self.voxel_map_localizer.voxel_pcd._points.detach().cpu(), \
+                                                                 colors=self.voxel_map_localizer.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03))
                 rr.log("Obstalce_map/2D_obs_map", rr.Image(obs.int() * 127 + exp.int() * 127))
             else:
                 cv2.imwrite(self.log + '/debug_' + str(self.obs_count) + '.jpg', np.asarray(obs.int() * 127 + exp.int() * 127))
@@ -934,14 +981,14 @@ class ImageProcessor:
         obs, exp = self.voxel_map.get_2d_map()
         if self.rerun:
             rr.set_time_sequence("frame", self.obs_count)
-            rr.log('robot_pov', rr.Image(rgb.permute(1, 2, 0)))
+            # rr.log('robot_pov', rr.Image(rgb.permute(1, 2, 0)), static = self.static)
             if self.voxel_map.voxel_pcd._points is not None:
                 rr.log("Obstalce_map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points.detach().cpu(), \
-                                                              colors=self.voxel_map.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03))
+                                                              colors=self.voxel_map.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03), static = self.static)
             if self.voxel_map_localizer.voxel_pcd._points is not None:
                 rr.log("Semantic_memory/pointcloud", rr.Points3D(self.voxel_map_localizer.voxel_pcd._points.detach().cpu(), \
-                                                                 colors=self.voxel_map_localizer.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03))
-            rr.log("Obstalce_map/2D_obs_map", rr.Image(obs.int() * 127 + exp.int() * 127))
+                                                                 colors=self.voxel_map_localizer.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03), static = self.static)
+            # rr.log("Obstalce_map/2D_obs_map", rr.Image(obs.int() * 127 + exp.int() * 127))
         else:
             cv2.imwrite(self.log + '/debug_' + str(self.obs_count) + '.jpg', obs.int() * 127 + exp.int() * 127)
 
@@ -952,23 +999,25 @@ def main(cfg):
     if not cfg.load_folder is None:
         print('Loading ', cfg.load_number, ' images from ', cfg.load_folder)
         # ['schoolbag', 'toy drill', 'red bowl', 'green bowl', 'purple cup', 'red cup', 'white rag', 'red apple', 'yellow ball', 'green rag', 'orange sofa', 'orange tape']
-        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['red bowl', 'green rag', 'green bowl', 'red cup', 'orange tape', 'toy drill', 'red packaging', 'purple body spray', 'red ball', 'wood carving', 'blue cup'])
+        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = [], static = cfg.static)
     if not cfg.open_communication:
         imageProcessor.log = cfg.load_folder
         while True:
             imageProcessor.debug_text()
     else:
-        try:  
-            while True:
-                imageProcessor.recv_text()
-        except KeyboardInterrupt:
-            if not imageProcessor.voxel_map_localizer.voxel_pcd._points is None:
-                print('Stop streaming images and write memory data, might take a while, please wait')
-                points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
-                points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-                pcd = numpy_to_pcd(points, rgb / 255)
-                o3d.io.write_point_cloud(imageProcessor.log + '/debug.pcd', pcd)
-                print('finished')
+        while True:
+            imageProcessor.recv_text()
+        # try:  
+        #     while True:
+        #         imageProcessor.recv_text()
+        # except KeyboardInterrupt:
+        #     if not imageProcessor.voxel_map_localizer.voxel_pcd._points is None:
+        #         print('Stop streaming images and write memory data, might take a while, please wait')
+        #         points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
+        #         points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
+        #         pcd = numpy_to_pcd(points, rgb / 255)
+        #         o3d.io.write_point_cloud(imageProcessor.log + '/debug.pcd', pcd)
+        #         print('finished')
 
 if __name__ == "__main__":
     main()

@@ -166,8 +166,8 @@ class AStar():
         i = 0
         while i < len(path) - 1:
             for j in range(len(path) - 1, i, -1):
-               if self.is_in_line_of_sight(path[i][:2], path[j][:2]):
-                   break
+                if self.is_in_line_of_sight(path[i][:2], path[j][:2]):
+                    break
             else:
                j = i + 1
             # Include the mid waypoint to avoid the collision
