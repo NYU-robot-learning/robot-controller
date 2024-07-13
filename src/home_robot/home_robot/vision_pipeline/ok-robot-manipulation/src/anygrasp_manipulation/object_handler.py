@@ -28,6 +28,9 @@ from utils.utils import (
 from utils.camera import CameraParameters
 from image_processors import LangSAMProcessor
 
+import rerun as rr
+import cv2
+import time
 
 class ObjectHandler:
     def __init__(self, cfgs):
@@ -39,6 +42,7 @@ class ObjectHandler:
             self.socket = ZmqSocket(self.cfgs)
 
         self.lang_sam = LangSAMProcessor()
+        self.rerun_frame = 1
 
     def receive_input(self, tries):
         if self.cfgs.open_communication:
@@ -85,6 +89,25 @@ class ObjectHandler:
         head_tilt = head_tilt / 100
         self.cam = CameraParameters(fx, fy, cx, cy, head_tilt, image, colors, depths)
 
+        # rr.set_time_sequence('frame', self.rerun_frame)
+        # self.rerun_frame += 1
+
+        if self.action == 'pick':
+            rr.init("Picking", spawn = False)
+            rr.connect('100.108.67.79:9876')
+            rr.log('all_anygrasp_estimated_poses', rr.Clear(recursive = True), static = True)
+            rr.log('Image_received_by_robot', rr.Clear(recursive = True), static = True)
+            rr.log('robot_monologue', rr.Clear(recursive = True), static = True)
+            rr.log('selected_pose', rr.Clear(recursive = True), static = True)
+            rr.log('object_detecion_results', rr.Clear(recursive = True), static = True)
+        else:
+            rr.init("Placing", spawn = False)
+            rr.connect('100.108.67.79:9876')
+            rr.log('Image_received_by_robot', rr.Clear(recursive = True), static = True)
+            rr.log('robot_monologue', rr.Clear(recursive = True), static = True)
+            rr.log('proposed_placing_location', rr.Clear(recursive = True), static = True)
+            rr.log('object_detecion_results', rr.Clear(recursive = True), static = True)
+
     def manipulate(self):
         """
         Wrapper for grasping and placing
@@ -111,11 +134,13 @@ class ObjectHandler:
 
             # Directory for saving visualisations
             self.save_dir = self.cfgs.environment + "/" + self.query + "/anygrasp/"
+            debug_text = '### Robot\'s monolouge: \n ## The text query I received is ' + self.query + '.\n'
             if not os.path.exists(self.save_dir):
                 os.makedirs(self.save_dir)
             if self.cfgs.open_communication:
                 camera_image_file_name = self.save_dir + "/clean_" + str(tries) + ".jpg"
                 self.cam.image.save(camera_image_file_name)
+                rr.log('Image_received_by_robot', rr.Image(cv2.imread(camera_image_file_name)[:, :, [2, 1, 0]]), static = True)
                 print(f"Saving the camera image at {camera_image_file_name}")
                 np.save(
                     self.save_dir + "/depths_" + str(tries) + ".npy", self.cam.depths
@@ -155,15 +180,21 @@ class ObjectHandler:
 
             # Center the robot
             if tries == 1 and self.cfgs.open_communication:
+                rr.log("robot_monologue", rr.TextDocument(debug_text + '### Now I move myself such that ' + self.query + ' appears in the center of the head camera.\n', media_type = rr.MediaType.MARKDOWN), static = True)
                 self.center_robot(bbox)
                 tries += 1
+                time.sleep(2.5)
                 continue
 
             points = get_3d_points(self.cam)
 
             if self.action == "place":
+                rr.log("robot_monologue", rr.TextDocument(debug_text + '### Now I will try to place the object in my gripper on ' + self.query + '.\n ### Firstly, LangSAM will detect ' + self.query + '. \n ### Then, the middle of segmentation mask will be selected as the placing location.\n', media_type = rr.MediaType.MARKDOWN), static = True)
+
                 retry = not self.place(points, seg_mask)
-            else:
+            else:                
+                rr.log("robot_monologue", rr.TextDocument(debug_text + '### Now I will try to pick up ' + self.query + '.\n ### Firstly, AnyGrasp will generate collision free grasps of all objects in the scene. \n ### After that, LangSAM will detect ' + self.query + '.\n ### Finally, I will filter AnyGrasp poses based on segmentation mask and select the best gripper pose.', media_type = rr.MediaType.MARKDOWN), static = True)
+
                 retry = not self.pickup(points, seg_mask, bbox, (tries == 11))
 
             if retry:
@@ -239,6 +270,10 @@ class ObjectHandler:
             ]
         )
 
+        pcd1 = o3d.geometry.PointCloud()
+        pcd1.points = o3d.utility.Vector3dVector(points1)
+        pcd1.colors = o3d.utility.Vector3dVector(colors)
+
         # 3d point cloud with upright camera
         transformed_points = np.dot(points1, cam_to_3d_rot)
 
@@ -249,10 +284,6 @@ class ObjectHandler:
         transformed_y = transformed_points[:, 1]
         transformed_z = transformed_points[:, 2]
         colors = colors[floor_mask]
-
-        pcd1 = o3d.geometry.PointCloud()
-        pcd1.points = o3d.utility.Vector3dVector(points1)
-        pcd1.colors = o3d.utility.Vector3dVector(colors)
 
         pcd2 = o3d.geometry.PointCloud()
         pcd2.points = o3d.utility.Vector3dVector(transformed_points)
@@ -278,16 +309,18 @@ class ObjectHandler:
         cylinder = o3d.geometry.TriangleMesh.create_cylinder(radius=0.1, height=0.04)
         cylinder_rot = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
         cylinder.rotate(cylinder_rot)
-        cylinder.translate(point)
+        cylinder.translate(cam_to_3d_rot @ point)
+        cylinder.rotate(cam_to_3d_rot)
         cylinder.paint_uniform_color([0, 1, 0])
         geometries.append(cylinder)
 
         if self.cfgs.debug:
             visualize_cloud_geometries(
-                pcd2,
+                pcd1,
                 geometries,
                 save_file=self.save_dir + "/placing.jpg",
                 visualize=not self.cfgs.headless,
+                rerun_name='proposed_placing_location'
             )
 
         point[1] += 0.1
@@ -419,12 +452,14 @@ class ObjectHandler:
                 grippers,
                 visualize=not self.cfgs.headless,
                 save_file=f"{self.cfgs.environment}/{self.query}/anygrasp/poses.jpg",
+                rerun_name='all_anygrasp_estimated_poses'
             )
             visualize_cloud_geometries(
                 cloud,
                 [filter_grippers[0].paint_uniform_color([1.0, 0.0, 0.0])],
                 visualize=not self.cfgs.headless,
                 save_file=f"{self.cfgs.environment}/{self.query}/anygrasp/best_pose.jpg",
+                rerun_name='selected_pose'
             )
 
         if self.cfgs.open_communication:

@@ -7,6 +7,10 @@ import open3d as o3d
 from utils.camera import CameraParameters
 from PIL import ImageDraw
 
+import rerun as rr
+import cv2
+from matplotlib import pyplot as plt
+
 
 def sample_points(points, sampling_rate=1):
     N = len(points)
@@ -82,7 +86,7 @@ def color_grippers(grippers, max_score, min_score):
 
     return grippers
 
-def visualize_cloud_geometries(cloud, geometries, translation = None, rotation = None, visualize = True, save_file = None):
+def visualize_cloud_geometries(cloud, geometries, translation = None, rotation = None, visualize = True, save_file = None, rerun_name = None):
     """
         cloud       : Point cloud of points
         geometries    : list of grippers of form graspnetAPI grasps
@@ -115,6 +119,9 @@ def visualize_cloud_geometries(cloud, geometries, translation = None, rotation =
 
         visualizer.capture_screen_image(save_file, do_render = True)
         print(f"Saved screen shot visualization at {save_file}")
+
+        if rerun_name is not None:
+            rr.log(rerun_name, rr.Image(cv2.imread(save_file)[100 : -100, 500 : -500, [2, 1, 0]]), static = True)
 
     if visualize:
         visualizer.add_geometry(coordinate_frame)
