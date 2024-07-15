@@ -75,8 +75,8 @@ class VoxelMapLocalizer():
             self.clip_model, self.preprocessor = clip.load("ViT-B/16", device=self.device)
             self.clip_model.eval()
         else:
-            self.clip_model = AutoModel.from_pretrained("google/siglip-base-patch16-224").to(self.device)
-            self.preprocessor = AutoProcessor.from_pretrained("google/siglip-base-patch16-224")
+            self.clip_model = AutoModel.from_pretrained("google/siglip-so400m-patch14-384").to(self.device)
+            self.preprocessor = AutoProcessor.from_pretrained("google/siglip-so400m-patch14-384")
             self.clip_model.eval()
         self.voxel_pcd = VoxelizedPointcloud().to(self.device)
         # self.exist_model = YOLOWorld("yolov8l-worldv2.pt")
@@ -169,7 +169,10 @@ class VoxelMapLocalizer():
         similarity = None
         point = None
         for idx, (centroid, obs, similarity, point) in enumerate(sorted(zip(centroids, obs_max_list, similarity_max_list, points), key=lambda x: x[2], reverse=True)):
-            cosine_similarity_check = similarity > 0.085
+            if self.siglip:
+                cosine_similarity_check = similarity > 0.14
+            else:
+                cosine_similarity_check = similarity > 0.3
             if cosine_similarity_check:
                 target_point = centroid
 
@@ -234,7 +237,10 @@ class VoxelMapLocalizer():
         points, features, _, _ = self.voxel_pcd.get_pointcloud()
         alignments = self.find_alignment_over_model(A).cpu().reshape(-1).detach().numpy()
         # turning_point = max(np.percentile(alignments, 99), 0.08)
-        turning_point = min(0.085, alignments[np.argsort(alignments)[-20]])
+        if self.siglip:
+            turning_point = min(0.14, alignments[np.argsort(alignments)[-20]])
+        else:
+            turning_point = min(0.3, alignments[np.argsort(alignments)[-20]])
         mask = alignments >= turning_point
         alignments = alignments[mask]
         points = points[mask]

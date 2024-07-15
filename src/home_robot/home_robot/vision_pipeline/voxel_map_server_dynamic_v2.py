@@ -291,8 +291,8 @@ class ImageProcessor:
             self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
             self.clip_model.eval()
         else:
-            self.clip_model = AutoModel.from_pretrained("google/siglip-base-patch16-224").to(self.device)
-            self.clip_preprocess = AutoProcessor.from_pretrained("google/siglip-base-patch16-224")
+            self.clip_model = AutoModel.from_pretrained("google/siglip-so400m-patch14-384").to(self.device)
+            self.clip_preprocess = AutoProcessor.from_pretrained("google/siglip-so400m-patch14-384")
             self.clip_model.eval()
         if self.owl:
             if not os.path.exists('sam_vit_b_01ec64.pth'):
@@ -312,80 +312,6 @@ class ImageProcessor:
             print('Loading old semantic memory')
             self.voxel_map_localizer.voxel_pcd = torch.load(self.pcd_path)
             print('Finish loading old semantic memory')
-
-    def debug_text(self):
-        text = input('Enter debug text: ')
-        start_pose = np.array([0, 0, 0])
-
-        # Do visual grounding
-        if text != '':
-            with self.voxel_map_lock:
-                localized_point = self.voxel_map_localizer.localize_AonB(text)
-                debug_point = self.voxel_map_localizer.localize_A_v2(text)
-                centroids, extends, similarity_max_list, points, obs_id = self.voxel_map_localizer.find_clusters_for_A(text, return_obs_counts = True)
-                print(centroids, similarity_max_list, obs_id)
-                print(debug_point, localized_point)
-                if self.rerun:
-                    for idx, point in enumerate(points):
-                        rr.log("Res/pointcloud_" + str(idx), rr.Points3D(point, colors=torch.Tensor([1, 0, 0]).repeat(len(point), 1), radii=0.03))
-
-                print(self.voxel_map_localizer.find_alignment_over_model(text).cpu().max().item())
-
-                print('\n', text, localized_point, '\n')
-            obs_id = int(self.voxel_map_localizer.find_obs_id_for_A(text).detach().cpu().item())
-            rgb = np.load(self.log + '/rgb' + str(obs_id) + '.npy')
-            if not self.rerun:
-                cv2.imwrite(self.log + '/debug_' + text + '.png', rgb[:, :, [2, 1, 0]])
-            else:
-                rr.log('Memory_image', rr.Image(rgb))
-            print('Points are observed from the ', obs_id, 'th image')
-        # Do Frontier based exploration
-        else:
-            localized_point = self.sample_frontier()
-            print('\n', localized_point, '\n')
-        
-        if localized_point is None:
-            print('Unable to find any target point, some exception might happen')
-            return
-        
-        if len(localized_point) == 2:
-            localized_point = np.array([localized_point[0], localized_point[1], 0])
-
-        point = self.sample_navigation(start_pose, localized_point)
-        # if text != '':
-        #     plt.savefig('debug_' + text + str(self.obs_count) + '.png')
-        # else:
-        #     plt.savefig('debug_exploration' + str(self.obs_count) + '.png')
-        # plt.clf()
-
-        if point is None:
-            print('Unable to find any target point, some exception might happen')
-        else:
-            print('Target point is', point)
-            res = self.planner.plan(start_pose, point)
-            if res.success:
-                waypoints = [pt.state for pt in res.trajectory]
-                # If we are navigating to some object of interst, send (x, y, z) of 
-                # the object so that we can make sure the robot looks at the object after navigation
-                finished = len(waypoints) <= 7
-                # print('Waypoints before pruning', waypoints)
-                if not finished:
-                    waypoints = waypoints[:7]
-                # print('Waypoints after pruning', waypoints)
-                traj = self.planner.clean_path_for_xy(waypoints)
-                # print('If we clean waypoints', traj)
-                # Remove the starting point
-                traj = traj[1:]
-                # traj = [waypoints[-1]]
-                # print('If we keep the last waypoint', traj)
-                if finished:
-                    traj.append([np.nan, np.nan, np.nan])
-                    if isinstance(localized_point, torch.Tensor):
-                        localized_point = localized_point.tolist()
-                    traj.append(localized_point)
-                print('Planned trajectory:', traj)
-            else:
-                print('[FAILURE]', res.reason)
 
     def recv_text(self):
         text = self.text_socket.recv_string()
@@ -587,11 +513,25 @@ class ImageProcessor:
 
         return v
 
+    def forward_one_block_siglip(self, resblocks, x):
+        q, k, v = None, None, None
+        x = F.linear(x, resblocks.in_proj_weight, resblocks.in_proj_bias)
+        N, L, C = x.shape
+        x = x.view(N, L, 3, C//3).permute(2, 0, 1, 3).reshape(3*N, L, C//3)
+        x = F.linear(x, resblocks.out_proj.weight, resblocks.out_proj.bias)
+        q, k, v = x.tensor_split(3, dim=0)
+
+        return v
+
     def extract_mask_clip_features(self, x, image_shape):
         if self.siglip:
             with torch.no_grad():
-                output = self.clip_model.vision_model(x['pixel_values'], output_hidden_states = True).detach().cpu()
-            feat = output.last_hidden_state.detach().cpu()
+                output = self.clip_model.vision_model(x['pixel_values'], output_hidden_states = True)
+            feat = output.last_hidden_state
+            feat = self.forward_one_block_siglip(self.clip_model.vision_model.head.attention, feat)
+            feat = self.clip_model.vision_model.head.layernorm(feat)
+            feat = feat + self.clip_model.vision_model.head.mlp(feat)
+            feat = feat.detach().cpu()
             with torch.no_grad():
                 N, L, H, W = self.clip_model.vision_model.embeddings.patch_embedding(x['pixel_values']).shape
             feat = feat.reshape(N, H, W, L).permute(0, 3, 1, 2)
@@ -654,7 +594,7 @@ class ImageProcessor:
         valid_rgb = rgb.permute(1, 2, 0)[~mask]
         if len(valid_xyz) != 0:
             self.add_to_voxel_pcd(valid_xyz, features, valid_rgb)
-    
+
     def run_owl_sam_clip(self, rgb, mask, world_xyz):
         with torch.no_grad():
             # inputs = self.owl_processor(text=self.texts, images=rgb, return_tensors="pt")
@@ -704,77 +644,105 @@ class ImageProcessor:
             if not self.siglip:
                 for (box, mask) in zip(bounding_boxes, masks):
                     tl_x, tl_y, br_x, br_y = box
-                    # tl_x -= 20
-                    # tl_y -= 20
-                    # br_x += 20
-                    # br_y += 20
-                    # crop_image = rgb.clone()
-                    # crop_image[:, ~mask] = 0
-                    # crop_image = crop_image[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])]
-                    # crops.append(self.clip_preprocess(transforms.ToPILImage()(crop_image)))
                     crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
                 features = self.clip_model.encode_image(torch.stack(crops, dim = 0).to(self.device))
             else:
                 for box in bounding_boxes:
                     tl_x, tl_y, br_x, br_y = box
-                    # tl_x -= 20
-                    # tl_y -= 20
-                    # br_x += 20
-                    # br_y += 20
-                    # crop_image = rgb.clone()
-                    # crop_image[:, ~mask] = 0
-                    # crop_image = crop_image[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])]
-                    # crops.append(transforms.ToPILImage()(crop_image))
                     crops.append(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])
                 inputs = self.clip_preprocess(images = crops, padding="max_length", return_tensors="pt").to(self.device)
                 features = self.clip_model.get_image_features(**inputs)
-            # for box in bounding_boxes:
-            #     tl_x, tl_y, br_x, br_y = box
-            #     crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
-            # features = self.clip_model.encode_image(torch.stack(crops, dim = 0).to(self.device))
             features = F.normalize(features, dim = -1).cpu()
-            
-            # Debug code, let the clip select bounding boxes most aligned with a text query, used to check whether clip embeddings for
-            # bounding boxes are reasonable
-
-            # text = clip.tokenize(["a coco cola"]).to(self.device)
-
-            # with torch.no_grad():
-            #     text_features = self.clip_model.encode_text(text)
-            #     text_features = F.normalize(text_features, dim = -1)
-            #     i = torch.argmax(features.float() @ text_features.T.float().cpu()).item()
-            # image_vis = np.array(rgb.permute(1, 2, 0))
-            # segmentation_color_map = np.zeros(image_vis.shape, dtype=np.uint8)
-            # cv2.imwrite('clean_' + str(self.obs_count) + '.jpg', cv2.cvtColor(image_vis, cv2.COLOR_RGB2BGR))
-            # tl_x, tl_y, br_x, br_y = bounding_boxes[i]
-            # tl_x, tl_y, br_x, br_y = tl_x.item(), tl_y.item(), br_x.item(), br_y.item()
-            # cv2.rectangle(image_vis, (int(tl_x), int(tl_y)), (int(br_x), int(br_y)), (255, 0, 0), 2)
-            # image_vis = cv2.cvtColor(image_vis, cv2.COLOR_RGB2BGR) 
-            # for vis_mask in masks:
-            #     segmentation_color_map[vis_mask.detach().cpu().numpy()] = [0, 255, 0]
-            # image_vis = cv2.addWeighted(image_vis, 0.7, segmentation_color_map, 0.3, 0)
-            # cv2.imwrite("seg" + str(self.obs_count) + ".jpg", image_vis)
 
 
         for idx, (sam_mask, feature) in enumerate(zip(masks.cpu(), features.cpu())):
             valid_mask = torch.logical_and(~mask, sam_mask)
-            # valid_mask = valid_mask.detach().cpu().numpy().astype(np.uint8)
-            # kernel_size = 5
-            # kernel = np.ones((kernel_size, kernel_size), np.uint8)
-            # valid_mask = torch.from_numpy(cv2.erode(valid_mask, kernel, iterations=1))
+            valid_xyz = world_xyz[valid_mask]
+            if valid_xyz.shape[0] == 0:
+                continue
+            feature = feature.repeat(valid_xyz.shape[0], 1)
+            valid_rgb = rgb.permute(1, 2, 0)[valid_mask]
+            self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb)
 
-            # Debug code, check whether every mask makes sense
+    def extract_per_pixel_features(self, x, image_shape):
+        if self.siglip:
+            with torch.no_grad():
+                output = self.clip_model.vision_model(x['pixel_values'], output_hidden_states = True)
+            feat = output.last_hidden_state
+            feat = self.forward_one_block_siglip(self.clip_model.vision_model.head.attention, feat)
+            feat = self.clip_model.vision_model.head.layernorm(feat)
+            feat = feat + self.clip_model.vision_model.head.mlp(feat)
+            feat = feat.detach().cpu()
+            with torch.no_grad():
+                N, L, H, W = self.clip_model.vision_model.embeddings.patch_embedding(x['pixel_values']).shape
+            feat = feat.reshape(N, H, W, L).permute(0, 3, 1, 2)
+        else:
+            with torch.no_grad():
+                x = self.clip_model.visual.conv1(x)
+                N, L, H, W = x.shape
+                x = x.reshape(x.shape[0], x.shape[1], -1)
+                x = x.permute(0, 2, 1)
+                x = torch.cat([self.clip_model.visual.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)
+                x = x + self.clip_model.visual.positional_embedding.to(x.dtype)
+                x = self.clip_model.visual.ln_pre(x)
+                x = x.permute(1, 0, 2)
+                for idx in range(self.clip_model.visual.transformer.layers):
+                    if idx == self.clip_model.visual.transformer.layers - 1:
+                        break
+                    x = self.clip_model.visual.transformer.resblocks[idx](x)
+                x = self.forward_one_block(self.clip_model.visual.transformer.resblocks[-1], x)
+                x = x[1:]
+                x = x.permute(1, 0, 2)
+                x = self.clip_model.visual.ln_post(x)
+                x = x @ self.clip_model.visual.proj
+                feat = x.reshape(N, H, W, -1).permute(0, 3, 1, 2)
+        features = []
+        for f, size in zip(feat, image_shape):
+            f = F.interpolate(f, size, mode = 'bilinear', align_corners = True)
+            print(f.shape)
+            f = f.normalize(f, dim = 0)
+            features.append(f)
+        return features
+    
+    def run_detection_encoder(self, rgb, mask, world_xyz):
+        with torch.no_grad():
+            results = self.yolo_model.predict(rgb.permute(1,2,0)[:, :, [2, 1, 0]].numpy(), conf=0.15, verbose=False)
+            xyxy_tensor = results[0].boxes.xyxy
+            if len(xyxy_tensor) == 0:
+                return
 
-            # plt.subplot(2, 2, 1)
-            # plt.imshow(~mask)
-            # plt.axis('off')
-            # plt.subplot(2, 2, 2)
-            # plt.imshow(sam_mask)
-            # plt.axis('off')
-            # plt.subplot(2, 2, 3)
-            # plt.imshow(valid_mask)
-            # plt.axis('off')
-            # plt.savefig('seg_' + str(idx) + '.jpg')
+            # self.mask_predictor.set_image(rgb.permute(1,2,0).numpy())
+            # # bounding_boxes = torch.stack(sorted(results[0]['boxes'], key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
+            # bounding_boxes = torch.stack(sorted(xyxy_tensor, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
+            # transformed_boxes = self.mask_predictor.transform.apply_boxes_torch(bounding_boxes.detach().to(self.device), rgb.shape[-2:])
+            # masks, _, _= self.mask_predictor.predict_torch(
+            #     point_coords=None,
+            #     point_labels=None,
+            #     boxes=transformed_boxes,
+            #     multimask_output=False
+            # )
+            # masks = masks[:, 0, :, :].cpu()
+    
+            crops = []
+            image_shapes = []
+            if not self.siglip:
+                for (box) in zip(bounding_boxes):
+                    tl_x, tl_y, br_x, br_y = box
+                    crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
+                    image_shapes.append((br_y - tl_y, br_x - tl_x))
+                features = self.extract_per_pixel_features(torch.stack(crops, dim = 0).to(self.device), image_shapes)
+            else:
+                for box in bounding_boxes:
+                    tl_x, tl_y, br_x, br_y = box
+                    crops.append(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])
+                    image_shapes.append((br_y - tl_y, br_x - tl_x))
+                inputs = self.clip_preprocess(images = crops, padding="max_length", return_tensors="pt").to(self.device)
+                features = self.extract_per_pixel_features(inputs, image_shapes)
+            # features = F.normalize(features, dim = -1).cpu()
+
+
+        for idx, (box, feature) in enumerate(zip(bounding_boxes, features.cpu())):
+            valid_mask = ~mask
             valid_xyz = world_xyz[valid_mask]
             if valid_xyz.shape[0] == 0:
                 continue
@@ -1013,25 +981,10 @@ def main(cfg):
     if not cfg.load_folder is None:
         print('Loading ', cfg.load_number, ' images from ', cfg.load_folder)
         # ['schoolbag', 'toy drill', 'red bowl', 'green bowl', 'purple cup', 'red cup', 'white rag', 'red apple', 'yellow ball', 'green rag', 'orange sofa', 'orange tape']
-        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['schoolbag', 'toy drill', 'red bowl', 'green bowl', 'purple cup', 'red cup', 'white rag', 'red apple', 'yellow ball', 'green rag', 'orange sofa', 'orange tape'])
-    if not cfg.open_communication:
-        imageProcessor.log = cfg.load_folder
-        while True:
-            imageProcessor.debug_text()
-    else:
+        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['red bowl', 'purple body spray', 'green bowl', 'green rag', 'orange tape'])
+    if cfg.open_communication:
         while True:
             imageProcessor.recv_text()
-        # try:  
-        #     while True:
-        #         imageProcessor.recv_text()
-        # except KeyboardInterrupt:
-        #     if not imageProcessor.voxel_map_localizer.voxel_pcd._points is None:
-        #         print('Stop streaming images and write memory data, might take a while, please wait')
-        #         points, _, _, rgb = imageProcessor.voxel_map_localizer.voxel_pcd.get_pointcloud()
-        #         points, rgb = points.detach().cpu().numpy(), rgb.detach().cpu().numpy()
-        #         pcd = numpy_to_pcd(points, rgb / 255)
-        #         o3d.io.write_point_cloud(imageProcessor.log + '/debug.pcd', pcd)
-        #         print('finished')
 
 if __name__ == "__main__":
     main()
