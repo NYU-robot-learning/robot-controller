@@ -192,7 +192,7 @@ def get_xyz(depth, pose, intrinsics):
 
 class ImageProcessor:
     def __init__(self,  
-        owl = False, 
+        owl = True, 
         siglip = True,
         device = 'cuda',
         min_depth = 0.25,
@@ -698,10 +698,9 @@ class ImageProcessor:
                 feat = x.reshape(N, H, W, -1).permute(0, 3, 1, 2)
         features = []
         for f, size in zip(feat, image_shape):
-            f = F.interpolate(f, size, mode = 'bilinear', align_corners = True)
-            print(f.shape)
-            f = f.normalize(f, dim = 0)
-            features.append(f)
+            f = F.interpolate(f.unsqueeze(0), size, mode = 'bilinear', align_corners = True)[0]
+            f = F.normalize(f, dim = 0).permute(1, 2, 0)
+            features.append(f.detach().cpu())
         return features
     
     def run_detection_encoder(self, rgb, mask, world_xyz):
@@ -712,7 +711,6 @@ class ImageProcessor:
                 return
 
             # self.mask_predictor.set_image(rgb.permute(1,2,0).numpy())
-            # # bounding_boxes = torch.stack(sorted(results[0]['boxes'], key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
             # bounding_boxes = torch.stack(sorted(xyxy_tensor, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
             # transformed_boxes = self.mask_predictor.transform.apply_boxes_torch(bounding_boxes.detach().to(self.device), rgb.shape[-2:])
             # masks, _, _= self.mask_predictor.predict_torch(
@@ -726,27 +724,33 @@ class ImageProcessor:
             crops = []
             image_shapes = []
             if not self.siglip:
-                for (box) in zip(bounding_boxes):
-                    tl_x, tl_y, br_x, br_y = box
-                    crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])))
-                    image_shapes.append((br_y - tl_y, br_x - tl_x))
+                for box in bounding_boxes:
+                    tl_x, tl_y, br_x, br_y = box.int()
+                    crops.append(self.clip_preprocess(transforms.ToPILImage()(rgb[:, max(tl_y, 0): min(br_y, rgb.shape[1]), max(tl_x, 0): min(br_x, rgb.shape[2])])))
+                    image_shapes.append(((br_y - tl_y).item(), (br_x - tl_x).item()))
                 features = self.extract_per_pixel_features(torch.stack(crops, dim = 0).to(self.device), image_shapes)
             else:
                 for box in bounding_boxes:
-                    tl_x, tl_y, br_x, br_y = box
-                    crops.append(rgb[:, max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])])
-                    image_shapes.append((br_y - tl_y, br_x - tl_x))
+                    tl_x, tl_y, br_x, br_y = box.int()
+                    crops.append(rgb[:, max(tl_y, 0): min(br_y, rgb.shape[1]), max(tl_x, 0): min(br_x, rgb.shape[2])])
+                    image_shapes.append(((br_y - tl_y).item(), (br_x - tl_x).item()))
                 inputs = self.clip_preprocess(images = crops, padding="max_length", return_tensors="pt").to(self.device)
                 features = self.extract_per_pixel_features(inputs, image_shapes)
             # features = F.normalize(features, dim = -1).cpu()
 
 
-        for idx, (box, feature) in enumerate(zip(bounding_boxes, features.cpu())):
-            valid_mask = ~mask
+        # for idx, (box, feature, sam_mask) in enumerate(zip(bounding_boxes, features, masks)):
+        for idx, (box, feature) in enumerate(zip(bounding_boxes, features)):
+            crop_mask = torch.zeros_like(mask).bool()
+            tl_x, tl_y, br_x, br_y = box
+            crop_mask[max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])] = True
+            # valid_mask = ~mask & crop_mask & sam_mask
+            valid_mask = ~mask & crop_mask
             valid_xyz = world_xyz[valid_mask]
             if valid_xyz.shape[0] == 0:
                 continue
-            feature = feature.repeat(valid_xyz.shape[0], 1)
+            # feature = feature[(~mask & sam_mask)[max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])]]
+            feature = feature[(~mask)[max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])]]
             valid_rgb = rgb.permute(1, 2, 0)[valid_mask]
             self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb)
     
@@ -810,7 +814,8 @@ class ImageProcessor:
 
             if not load_memory:
                 if self.owl:
-                    self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+                    # self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+                    self.run_detection_encoder(rgb, ~valid_depth, world_xyz)
                 else:
                     self.run_mask_clip(rgb, ~valid_depth, world_xyz)
             if self.rerun:
