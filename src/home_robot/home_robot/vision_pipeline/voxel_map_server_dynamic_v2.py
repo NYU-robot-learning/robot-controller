@@ -443,6 +443,8 @@ class ImageProcessor:
                     vectors.append([traj[idx + 1][0] - traj[idx][0], traj[idx + 1][1] - traj[idx][1], 0])
             rr.log("/direction", rr.Arrows3D(origins = origins, vectors = vectors, colors=torch.Tensor([0, 1, 0]), radii=0.05), static = self.static)
             rr.log("/robot_start_pose", rr.Points3D([start_pose[0], start_pose[1], 1.5], colors=torch.Tensor([0, 0, 1]), radii=0.1), static = self.static)
+        
+        self.write_to_pickle()
 
     def sample_navigation(self, start, point):
         plt.clf()
@@ -504,7 +506,6 @@ class ImageProcessor:
             process_time = time.time() - start_time
             print('Image processing takes', process_time, 'seconds')
             print('processing took ' + str(process_time) + ' seconds')
-            self.write_to_pickle()
 
     def forward_one_block(self, resblocks, x):
         q, k, v = None, None, None
