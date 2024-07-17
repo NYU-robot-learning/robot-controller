@@ -55,6 +55,9 @@ class RobotAgentMDP:
         self,
         robot: RobotClient,
         parameters: Dict[str, Any],
+        ip: str,
+        image_port: int = 5560,
+        text_port: int = 5561,
         manip_port: int = 5557,
         re: int = 1,
         log_dir: str = 'debug'
@@ -79,7 +82,7 @@ class RobotAgentMDP:
         self.robot.move_to_nav_posture()
 
         self.normalize_embeddings = True
-        self.pos_err_threshold = 0.3
+        self.pos_err_threshold = 0.35
         self.rot_err_threshold = 0.4
         self.obs_count = 0
         self.obs_history = []
@@ -87,7 +90,7 @@ class RobotAgentMDP:
             parameters.guarantee_instance_is_reachable
         )
 
-        self.image_sender = ImageSender()
+        self.image_sender = ImageSender(ip = ip, image_port = image_port, text_port = text_port, manip_port = manip_port)
 
         self.look_around_times = []
         self.execute_times = []
@@ -444,7 +447,7 @@ def recv_everything(socket):
 class ImageSender:
     def __init__(self, 
         stop_and_photo = False, 
-        ip = '172.24.71.227', 
+        ip = '100.108.67.79', 
         image_port = 5560,
         text_port = 5561,
         manip_port = 5557,

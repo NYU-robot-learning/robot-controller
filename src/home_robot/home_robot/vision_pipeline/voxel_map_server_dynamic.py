@@ -192,7 +192,7 @@ def get_xyz(depth, pose, intrinsics):
 
 class ImageProcessor:
     def __init__(self,  
-        owl = False, 
+        owl = True, 
         siglip = True,
         device = 'cuda',
         min_depth = 0.25,
@@ -210,9 +210,8 @@ class ImageProcessor:
         self.log = 'debug_' + current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
         self.rerun = rerun
         if self.rerun:
-            # rr.init(self.log, spawn = False)
-            # rr.connect('100.108.67.79:9876')
-            rr.init(self.log, spawn = True)
+            rr.init(self.log, spawn = False)
+            rr.connect('100.108.67.79:9876')
         self.min_depth = min_depth
         self.max_depth = max_depth
         self.obs_count = 0
@@ -588,33 +587,25 @@ class ImageProcessor:
         return v
 
     def extract_mask_clip_features(self, x, image_shape):
-        if self.siglip:
-            with torch.no_grad():
-                output = self.clip_model.vision_model(x['pixel_values'], output_hidden_states = True).detach().cpu()
-            feat = output.last_hidden_state.detach().cpu()
-            with torch.no_grad():
-                N, L, H, W = self.clip_model.vision_model.embeddings.patch_embedding(x['pixel_values']).shape
-            feat = feat.reshape(N, H, W, L).permute(0, 3, 1, 2)
-        else:
-            with torch.no_grad():
-                x = self.clip_model.visual.conv1(x)
-                N, L, H, W = x.shape
-                x = x.reshape(x.shape[0], x.shape[1], -1)
-                x = x.permute(0, 2, 1)
-                x = torch.cat([self.clip_model.visual.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)
-                x = x + self.clip_model.visual.positional_embedding.to(x.dtype)
-                x = self.clip_model.visual.ln_pre(x)
-                x = x.permute(1, 0, 2)
-                for idx in range(self.clip_model.visual.transformer.layers):
-                    if idx == self.clip_model.visual.transformer.layers - 1:
-                        break
-                    x = self.clip_model.visual.transformer.resblocks[idx](x)
-                x = self.forward_one_block(self.clip_model.visual.transformer.resblocks[-1], x)
-                x = x[1:]
-                x = x.permute(1, 0, 2)
-                x = self.clip_model.visual.ln_post(x)
-                x = x @ self.clip_model.visual.proj
-                feat = x.reshape(N, H, W, -1).permute(0, 3, 1, 2)
+        with torch.no_grad():
+            x = self.clip_model.visual.conv1(x)
+            N, L, H, W = x.shape
+            x = x.reshape(x.shape[0], x.shape[1], -1)
+            x = x.permute(0, 2, 1)
+            x = torch.cat([self.clip_model.visual.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)
+            x = x + self.clip_model.visual.positional_embedding.to(x.dtype)
+            x = self.clip_model.visual.ln_pre(x)
+            x = x.permute(1, 0, 2)
+            for idx in range(self.clip_model.visual.transformer.layers):
+                if idx == self.clip_model.visual.transformer.layers - 1:
+                    break
+                x = self.clip_model.visual.transformer.resblocks[idx](x)
+            x = self.forward_one_block(self.clip_model.visual.transformer.resblocks[-1], x)
+            x = x[1:]
+            x = x.permute(1, 0, 2)
+            x = self.clip_model.visual.ln_post(x)
+            x = x @ self.clip_model.visual.proj
+            feat = x.reshape(N, H, W, -1).permute(0, 3, 1, 2)
         feat = F.interpolate(feat, image_shape, mode = 'bilinear', align_corners = True)
         feat = F.normalize(feat, dim = 1)
         return feat.permute(0, 2, 3, 1)
@@ -624,15 +615,10 @@ class ImageProcessor:
         # cv2.imwrite('debug.jpg', np.asarray(transforms.ToPILImage()(rgb), dtype = np.uint8))
 
         with torch.no_grad():
-            if not self.siglip:
-                if self.device == 'cpu':
-                    input = self.clip_preprocess(transforms.ToPILImage()(rgb)).unsqueeze(0).to(self.device)
-                else:
-                    input = self.clip_preprocess(transforms.ToPILImage()(rgb)).unsqueeze(0).to(self.device).half()
+            if self.device == 'cpu':
+                input = self.clip_preprocess(transforms.ToPILImage()(rgb)).unsqueeze(0).to(self.device)
             else:
-                input = self.clip_preprocess(images=rgb, padding="max_length", return_tensors="pt")
-                for i in input:
-                    input[i] = input[i].to(self.device)
+                input = self.clip_preprocess(transforms.ToPILImage()(rgb)).unsqueeze(0).to(self.device).half()
             features = self.extract_mask_clip_features(input, rgb.shape[-2:])[0].cpu()
 
         # Let MaskClip do segmentation, the results should be reasonable but do not expect it to be accurate
@@ -995,7 +981,7 @@ class ImageProcessor:
         obs, exp = self.voxel_map.get_2d_map()
         if self.rerun:
             rr.set_time_sequence("frame", self.obs_count)
-            rr.log('robot_pov', rr.Image(rgb.permute(1, 2, 0)), static = self.static)
+            # rr.log('robot_pov', rr.Image(rgb.permute(1, 2, 0)), static = self.static)
             if self.voxel_map.voxel_pcd._points is not None:
                 rr.log("Obstalce_map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points.detach().cpu(), \
                                                               colors=self.voxel_map.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03), static = self.static)
@@ -1009,11 +995,11 @@ class ImageProcessor:
 @hydra.main(version_base="1.2", config_path=".", config_name="config.yaml")
 def main(cfg):
     torch.manual_seed(1)
-    imageProcessor = ImageProcessor(rerun = cfg.rerun, static = cfg.static)
+    imageProcessor = ImageProcessor(rerun = cfg.rerun)
     if not cfg.load_folder is None:
         print('Loading ', cfg.load_number, ' images from ', cfg.load_folder)
         # ['schoolbag', 'toy drill', 'red bowl', 'green bowl', 'purple cup', 'red cup', 'white rag', 'red apple', 'yellow ball', 'green rag', 'orange sofa', 'orange tape']
-        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['schoolbag', 'toy drill', 'red bowl', 'green bowl', 'purple cup', 'red cup', 'white rag', 'red apple', 'yellow ball', 'green rag', 'orange sofa', 'orange tape'])
+        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = [], static = cfg.static)
     if not cfg.open_communication:
         imageProcessor.log = cfg.load_folder
         while True:

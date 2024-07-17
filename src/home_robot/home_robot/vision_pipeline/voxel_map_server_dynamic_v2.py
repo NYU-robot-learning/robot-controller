@@ -21,6 +21,8 @@ import time
 import open3d as o3d
 
 from matplotlib import pyplot as plt
+import pickle
+from pathlib import Path
 # This VoxelizedPointCloud is exactly the same thing as that in home_robot.util.voxel, rewrite here just for easy debugging
 from voxel import VoxelizedPointcloud
 from home_robot.utils.voxel import VoxelizedPointcloud
@@ -192,7 +194,7 @@ def get_xyz(depth, pose, intrinsics):
 
 class ImageProcessor:
     def __init__(self,  
-        owl = True, 
+        owl = False, 
         siglip = True,
         device = 'cuda',
         min_depth = 0.25,
@@ -210,9 +212,11 @@ class ImageProcessor:
         self.log = 'debug_' + current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
         self.rerun = rerun
         if self.rerun:
-            # rr.init(self.log, spawn = False)
-            # rr.connect('100.108.67.79:9876')
-            rr.init(self.log, spawn = True)
+            if self.static:
+                rr.init(self.log, spawn = False)
+                rr.connect('100.108.67.79:9876')
+            else:
+                rr.init(self.log, spawn = True)
         self.min_depth = min_depth
         self.max_depth = max_depth
         self.obs_count = 0
@@ -247,8 +251,8 @@ class ImageProcessor:
             obs_max_height=parameters["obs_max_height"],
             obs_min_density = parameters["obs_min_density"],
             exp_min_density = parameters["exp_min_density"],
-            min_depth=parameters["min_depth"],
-            max_depth=parameters["max_depth"],
+            min_depth=self.min_depth,
+            max_depth=self.max_depth,
             pad_obstacles=parameters["pad_obstacles"],
             add_local_radius_points=parameters.get(
                 "add_local_radius_points", default=True
@@ -303,7 +307,7 @@ class ImageProcessor:
             # self.owl_processor = AutoProcessor.from_pretrained("google/owlvit-base-patch32")
             # self.owl_model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32").eval().to(self.device)
             # self.texts = [['a photo of ' + text for text in CLASS_LABELS_200]]
-            self.yolo_model = YOLOWorld('yolov8l-worldv2.pt')
+            self.yolo_model = YOLOWorld('yolov8s-worldv2.pt')
             self.texts = CLASS_LABELS_200
             self.yolo_model.set_classes(self.texts)
         # self.voxel_map_localizer = VoxelMapLocalizer(device = self.device)
@@ -318,14 +322,15 @@ class ImageProcessor:
         self.text_socket.send_string('Text recevied, waiting for robot pose')
         start_pose = recv_array(self.text_socket)
         if self.rerun:
-            if self.static:
+            if not self.static:
                 rr.set_time_sequence("frame", self.obs_count)
             rr.log('/object', rr.Clear(recursive = True), static = self.static)
             rr.log('/robot_start_pose', rr.Clear(recursive = True), static = self.static)
             rr.log('/direction', rr.Clear(recursive = True), static = self.static)
             rr.log('robot_monologue', rr.Clear(recursive = True), static = self.static)
             rr.log('/Past_observation_most_similar_to_text', rr.Clear(recursive = True), static = self.static)
-            rr.connect('100.108.67.79:9876')
+            if not self.static:
+                rr.connect('100.108.67.79:9876')
 
         debug_text = ''
         mode = 'navigation'
@@ -391,7 +396,7 @@ class ImageProcessor:
             rr.log("robot_monologue", rr.TextDocument(debug_text, media_type = rr.MediaType.MARKDOWN), static = self.static)
 
         if obs is not None and mode == 'navigation':
-            rgb = np.load(self.log + '/rgb' + str(obs) + '.npy')
+            rgb = self.voxel_map.observations[obs_id - 1].rgb
             if not self.rerun:
                 cv2.imwrite(self.log + '/debug_' + text + '.png', rgb[:, :, [2, 1, 0]])
             else:
@@ -499,6 +504,7 @@ class ImageProcessor:
             process_time = time.time() - start_time
             print('Image processing takes', process_time, 'seconds')
             print('processing took ' + str(process_time) + ' seconds')
+            self.write_to_pickle()
 
     def forward_one_block(self, resblocks, x):
         q, k, v = None, None, None
@@ -711,7 +717,7 @@ class ImageProcessor:
                 return
 
             # self.mask_predictor.set_image(rgb.permute(1,2,0).numpy())
-            # bounding_boxes = torch.stack(sorted(xyxy_tensor, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
+            bounding_boxes = torch.stack(sorted(xyxy_tensor, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]), reverse = True), dim = 0)
             # transformed_boxes = self.mask_predictor.transform.apply_boxes_torch(bounding_boxes.detach().to(self.device), rgb.shape[-2:])
             # masks, _, _= self.mask_predictor.predict_torch(
             #     point_coords=None,
@@ -819,7 +825,8 @@ class ImageProcessor:
                 else:
                     self.run_mask_clip(rgb, ~valid_depth, world_xyz)
             if self.rerun:
-                rr.set_time_sequence("frame", self.obs_count)
+                if not self.static:
+                    rr.set_time_sequence("frame", self.obs_count)
                 if self.voxel_map.voxel_pcd._points is not None:
                     rr.log("Obstalce_map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points.detach().cpu(), \
                                                               colors=self.voxel_map.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03))
@@ -902,7 +909,8 @@ class ImageProcessor:
                 #     obs_id = max(obs_ids)
                 print(self.voxel_map_localizer.check_existence(text, obs_id))
 
-                rgb = np.load(log + '/rgb' + str(int(self.voxel_map_localizer.find_obs_id_for_A(text).detach().cpu().item())) + '.npy')
+                # rgb = np.load(log + '/rgb' + str(int(self.voxel_map_localizer.find_obs_id_for_A(text).detach().cpu().item())) + '.npy')
+                rgb = self.voxel_map.observations[obs_id - 1].rgb
                 if not self.rerun:
                     cv2.imwrite(log + '/debug_' + text + '.png', rgb[:, :, [2, 1, 0]])
                 else:
@@ -955,7 +963,8 @@ class ImageProcessor:
             self.voxel_map.voxel_pcd.clear_points(depth, torch.from_numpy(intrinsics), torch.from_numpy(pose))
 
         if self.owl:
-            self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+            # self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+            self.run_detection_encoder(rgb, ~valid_depth, world_xyz)
         else:
             self.run_mask_clip(rgb, ~valid_depth, world_xyz)
 
@@ -967,8 +976,9 @@ class ImageProcessor:
         )
         obs, exp = self.voxel_map.get_2d_map()
         if self.rerun:
-            rr.set_time_sequence("frame", self.obs_count)
-            rr.log('robot_pov', rr.Image(rgb.permute(1, 2, 0)), static = self.static)
+            if not self.static:
+                rr.set_time_sequence("frame", self.obs_count)
+            # rr.log('robot_pov', rr.Image(rgb.permute(1, 2, 0)), static = self.static)
             if self.voxel_map.voxel_pcd._points is not None:
                 rr.log("Obstalce_map/pointcloud", rr.Points3D(self.voxel_map.voxel_pcd._points.detach().cpu(), \
                                                               colors=self.voxel_map.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03), static = self.static)
@@ -979,14 +989,111 @@ class ImageProcessor:
         else:
             cv2.imwrite(self.log + '/debug_' + str(self.obs_count) + '.jpg', obs.int() * 127 + exp.int() * 127)
 
+    def read_from_pickle(self, pickle_file_name, num_frames: int = -1):
+        if isinstance(pickle_file_name, str):
+            pickle_file_name = Path(pickle_file_name)
+        assert pickle_file_name.exists(), f"No file found at {pickle_file_name}"
+        with pickle_file_name.open("rb") as f:
+            data = pickle.load(f)
+        for i, (
+            camera_pose,
+            xyz,
+            rgb,
+            feats,
+            depth,
+            base_pose,
+            K,
+            world_xyz,
+        ) in enumerate(
+            zip(
+                data["camera_poses"],
+                data["xyz"],
+                data["rgb"],
+                data["feats"],
+                data["depth"],
+                data["base_poses"],
+                data["camera_K"],
+                data["world_xyz"],
+            )
+        ):
+            # Handle the case where we dont actually want to load everything
+            if num_frames > 0 and i >= num_frames:
+                break
+
+            camera_pose = self.voxel_map.fix_data_type(camera_pose)
+            xyz = self.voxel_map.fix_data_type(xyz)
+            rgb = self.voxel_map.fix_data_type(rgb)
+            depth = self.voxel_map.fix_data_type(depth)
+            if feats is not None:
+                feats = self.voxel_map.fix_data_type(feats)
+            base_pose = self.voxel_map.fix_data_type(base_pose)
+            self.voxel_map.add(
+                camera_pose=camera_pose,
+                xyz=xyz,
+                rgb=rgb,
+                feats=feats,
+                depth=depth,
+                base_pose=base_pose,
+                camera_K=K,
+            )
+        self.voxel_map_localizer.voxel_pcd._points = data["combined_xyz"]
+        self.voxel_map_localizer.voxel_pcd._features = data["combined_feats"]
+        self.voxel_map_localizer.voxel_pcd._weights = data["combined_weights"]
+        self.voxel_map_localizer.voxel_pcd._rgb = data["combined_rgb"]
+        self.voxel_map_localizer.voxel_pcd._obs_counts = data["obs_id"]
+        self.voxel_map_localizer.voxel_pcd._entity_ids = data["entity_id"]
+
+    def write_to_pickle(self):
+        """Write out to a pickle file. This is a rough, quick-and-easy output for debugging, not intended to replace the scalable data writer in data_tools for bigger efforts."""
+        if not os.path.exists('debug'):
+            os.mkdir('debug')
+        filename = 'debug/' + self.log + '.pkl'
+        data = {}
+        data["camera_poses"] = []
+        data["camera_K"] = []
+        data["base_poses"] = []
+        data["xyz"] = []
+        data["world_xyz"] = []
+        data["rgb"] = []
+        data["depth"] = []
+        data["feats"] = []
+        for frame in self.voxel_map.observations:
+            # add it to pickle
+            # TODO: switch to using just Obs struct?
+            data["camera_poses"].append(frame.camera_pose)
+            data["base_poses"].append(frame.base_pose)
+            data["camera_K"].append(frame.camera_K)
+            data["xyz"].append(frame.xyz)
+            data["world_xyz"].append(frame.full_world_xyz)
+            data["rgb"].append(frame.rgb)
+            data["depth"].append(frame.depth)
+            data["feats"].append(frame.feats)
+            for k, v in frame.info.items():
+                if k not in data:
+                    data[k] = []
+                data[k].append(v)
+        (
+            data["combined_xyz"],
+            data["combined_feats"],
+            data["combined_weights"],
+            data["combined_rgb"],
+        ) = self.voxel_map_localizer.voxel_pcd.get_pointcloud()
+        data["obs_id"] = self.voxel_map_localizer.voxel_pcd._obs_counts
+        data["entity_id"] = self.voxel_map_localizer.voxel_pcd._entity_ids
+        with open(filename, "wb") as f:
+            pickle.dump(data, f)
+
 @hydra.main(version_base="1.2", config_path=".", config_name="config.yaml")
 def main(cfg):
     torch.manual_seed(1)
-    imageProcessor = ImageProcessor(rerun = cfg.rerun, static = cfg.static)
+    imageProcessor = ImageProcessor(rerun = cfg.rerun, static = cfg.static, min_depth = cfg.min_depth, max_depth = cfg.max_depth)
     if not cfg.load_folder is None:
         print('Loading ', cfg.load_number, ' images from ', cfg.load_folder)
         # ['schoolbag', 'toy drill', 'red bowl', 'green bowl', 'purple cup', 'red cup', 'white rag', 'red apple', 'yellow ball', 'green rag', 'orange sofa', 'orange tape']
-        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['red bowl', 'purple body spray', 'green bowl', 'green rag', 'orange tape'])
+        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['schoolbag', 'toy drill', 'green bowl'])
+    elif not cfg.pickle_file_name is None:
+        imageProcessor.read_from_pickle(cfg.pickle_file_name)
+    print(imageProcessor.voxel_map_localizer.voxel_pcd._points)
     if cfg.open_communication:
         while True:
             imageProcessor.recv_text()

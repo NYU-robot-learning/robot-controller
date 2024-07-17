@@ -40,8 +40,7 @@ def compute_tilt(camera_xyz, target_xyz):
     return -np.arctan2(vector[2], np.linalg.norm(vector[:2]))
 
 @click.command()
-@click.option("--rate", default=5, type=int)
-@click.option("--visualize", default=False, is_flag=True)
+@click.option("--ip", default='100.108.67.79', type=str)
 @click.option("--manual-wait", default=False, is_flag=True)
 @click.option("--output-filename", default="stretch_output", type=str)
 @click.option("--show-intermediate-maps", default=False, is_flag=True)
@@ -55,8 +54,7 @@ def compute_tilt(camera_xyz, target_xyz):
     help="Input path with default value 'output.npy'",
 )
 def main(
-    rate,
-    # visualize,
+    ip,
     manual_wait,
     output_filename,
     navigate_home: bool = False,
@@ -96,7 +94,7 @@ def main(
 
     print("- Start robot agent with data collection")
     demo = RobotAgent(
-        robot, parameters, re = re, log_dir = 'debug' + '_' + formatted_datetime
+        robot, parameters, ip = ip, re = re, log_dir = 'debug' + '_' + formatted_datetime
     )
 
     if input_path:
