@@ -48,11 +48,11 @@ class ObjectHandler:
         if self.cfgs.open_communication:
             print("\n\nWaiting for data from Robot")
             # Reading color array
-            colors = self.socket.recv_array()
+            colors = self.socket.recv_rgb_img()
             self.socket.send_data("RGB received")
 
             # Depth data
-            depths = self.socket.recv_array()
+            depths = self.socket.recv_depth_img()
             # print(np.max(depths), np.min(depths))
             self.socket.send_data("depth received")
 

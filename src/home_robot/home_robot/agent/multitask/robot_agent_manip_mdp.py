@@ -55,6 +55,9 @@ class RobotAgentMDP:
         self,
         robot: RobotClient,
         parameters: Dict[str, Any],
+        ip: str,
+        image_port: int = 5560,
+        text_port: int = 5561,
         manip_port: int = 5557,
         re: int = 1,
         log_dir: str = 'debug'
@@ -79,7 +82,7 @@ class RobotAgentMDP:
         self.robot.move_to_nav_posture()
 
         self.normalize_embeddings = True
-        self.pos_err_threshold = 0.3
+        self.pos_err_threshold = 0.35
         self.rot_err_threshold = 0.4
         self.obs_count = 0
         self.obs_history = []
@@ -87,7 +90,7 @@ class RobotAgentMDP:
             parameters.guarantee_instance_is_reachable
         )
 
-        self.image_sender = ImageSender()
+        self.image_sender = ImageSender(ip = ip, image_port = image_port, text_port = text_port, manip_port = manip_port)
 
         self.look_around_times = []
         self.execute_times = []
@@ -296,14 +299,10 @@ class RobotAgentMDP:
 
         # lift arm to the top before the robot extends the arm, prepare the pre-placing gripper pose
         self.manip_wrapper.move_to_position(lift_pos=1.05)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[1] - 1.05) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(1.5)
         self.manip_wrapper.move_to_position(wrist_yaw=0,
                                  wrist_pitch=0)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[3] - 0) < 0.05 and abs(robot.robot.manip.get_joint_positions()[4] - 0) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(1.5)
 
         # Placing the object
         move_to_point(self.manip_wrapper, translation, base_node, self.transform_node, move_mode=0)
@@ -313,25 +312,16 @@ class RobotAgentMDP:
         # Lift the arm a little bit, and rotate the wrist roll of the robot in case the object attached on the gripper
         self.manip_wrapper.move_to_position(lift_pos = self.manip_wrapper.robot.manip.get_joint_positions()[1] + 0.3)
         self.manip_wrapper.move_to_position(wrist_roll = 3.)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[5] - 3) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(0.8)
         self.manip_wrapper.move_to_position(wrist_roll = -3.)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[5] - (-3)) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(0.8)
 
         # Wait for some time and shrink the arm back
         self.manip_wrapper.move_to_position(gripper_pos=1, 
                                 lift_pos = 1.05,
                                 arm_pos = 0)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[1] - 1.05) < 0.05 and abs(robot.robot.manip.get_joint_positions()[2] - 0) < 0.05 and time.time() - start_time < 2.5:
-            continue
+        time.sleep(2)
         self.manip_wrapper.move_to_position(wrist_pitch=-1.57)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[4] - (-1.57)) < 0.05 and abs(robot.robot.manip.get_joint_positions()[2] - 0) < 0.05 and time.time() - start_time < 2.5:
-            continue
 
         # Shift the base back to the original point as we are certain that orginal point is navigable in navigation obstacle map
         self.manip_wrapper.move_to_position(base_trans = -self.manip_wrapper.robot.manip.get_joint_positions()[0])
@@ -457,7 +447,7 @@ def recv_everything(socket):
 class ImageSender:
     def __init__(self, 
         stop_and_photo = False, 
-        ip = '172.24.71.227', 
+        ip = '100.108.67.79', 
         image_port = 5560,
         text_port = 5561,
         manip_port = 5557,

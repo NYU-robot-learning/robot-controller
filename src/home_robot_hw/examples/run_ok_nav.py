@@ -13,7 +13,6 @@ import click
 import matplotlib.pyplot as plt
 import numpy as np
 import open3d
-import rclpy
 import torch
 from PIL import Image
 
@@ -23,7 +22,7 @@ from home_robot.agent.multitask import RobotAgentMDP as RobotAgent
 
 # Chat and UI tools
 from home_robot.utils.point_cloud import numpy_to_pcd, show_point_cloud
-from robot_hw_python.remote import StretchClient
+from home_robot_hw.remote import StretchClient
 
 import cv2
 import threading
@@ -59,7 +58,7 @@ def main(
     output_filename,
     navigate_home: bool = False,
     show_intermediate_maps: bool = False,
-    explore_iter: int = 5,
+    explore_iter: int = 10,
     re: int = 1,
     input_path: str = None,
     **kwargs,
@@ -72,7 +71,6 @@ def main(
         random_goals(bool): randomly sample frontier goals instead of looking for closest
     """
 
-    rclpy.init()
     current_datetime = datetime.datetime.now()
     formatted_datetime = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
     output_pcd_filename = output_filename + "_" + formatted_datetime + ".pcd"
@@ -108,7 +106,7 @@ def main(
             break
         if mode == 'E':
             robot.switch_to_navigation_mode()
-            for epoch in range(explore_iter):
+            for epoch in range(10):
                 print('\n', 'Exploration epoch ', epoch, '\n')
                 if not demo.run_exploration():
                     print('Exploration failed! Quitting!')

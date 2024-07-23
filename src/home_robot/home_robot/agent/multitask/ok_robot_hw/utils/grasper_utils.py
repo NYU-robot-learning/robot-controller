@@ -128,9 +128,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
 
     # Lifting the arm to high position as part of pregrasping position
     robot.move_to_position(lift_pos = 1.05, head_pan = None, head_tilt = None)
-    start_time = time.time()
-    while abs(robot.robot.manip.get_joint_positions()[1] - 1.05) < 0.05 and time.time() - start_time < 2.5:
-        continue
+    time.sleep(2)
 
     # Rotation for aligning Robot gripper frame to Model gripper frame
     rotation2_top = PyKDL.Rotation(0, 0, 1, 1, 0, 0, 0, -1, 0)
@@ -214,35 +212,22 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
 
     # Lifts the arm
     robot.move_to_position(lift_pos = 1.0)
-    start_time = time.time()
-    while abs(robot.robot.manip.get_joint_positions()[1] - 1.0) < 0.05 and time.time() - start_time < 2.5:
-        continue
+    time.sleep(1)
 
     # Tucks the gripper so that while moving to place it wont collide with any obstacles
     robot.move_to_position(arm_pos = 0.01)
-    start_time = time.time()
-    while abs(robot.robot.manip.get_joint_positions()[2] - 0.01) < 0.05 and time.time() - start_time < 2.5:
-        continue
+    time.sleep(1)
     robot.move_to_position(wrist_pitch = 0.0)
-    start_time = time.time()
-    while abs(robot.robot.manip.get_joint_positions()[2] - 0.01) < 0.05 and time.time() - start_time < 0.3:
-        continue
-    robot.move_to_position(wrist_yaw  = 2.0)
-    start_time = time.time()
-    while abs(robot.robot.manip.get_joint_positions()[3] - 2.0) < 0.05 and time.time() - start_time < 2.5:
-        continue
+    time.sleep(1)
+    robot.move_to_position(wrist_yaw  = 2.5)
+    time.sleep(1)
 
     # rotate the arm wrist onto the base
-    if abs(robot.robot.manip.get_joint_positions()[3] - 2.0) > 0.1:
-        robot.move_to_position(wrist_yaw  = - 2.0)
-        start_time = time.time()
-        while abs(robot.robot.manip.get_joint_positions()[3] - (-2.0)) < 0.05 and time.time() - start_time < 2.5:
-            continue
+    if abs(robot.robot.manip.get_joint_positions()[3] - 2.5) > 0.1:
+        robot.move_to_position(wrist_yaw  = - 2.5)
+        time.sleep(1)
 
     # Put down the arm    
     robot.move_to_position(lift_pos = 0.45)
-    start_time = time.time()
-    while abs(robot.robot.manip.get_joint_positions()[1] - 0.45) < 0.05 and time.time() - start_time < 2.5:
-        continue
-
+    time.sleep(1)
 

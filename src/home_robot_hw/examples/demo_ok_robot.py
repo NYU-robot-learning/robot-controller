@@ -61,7 +61,7 @@ def main(
     output_filename,
     navigate_home: bool = False,
     show_intermediate_maps: bool = False,
-    explore_iter: int = -1,
+    explore_iter: int = 10,
     re: int = 1,
     input_path: str = None,
     **kwargs,
@@ -85,7 +85,7 @@ def main(
     # robot.nav.navigate_to([0, 0, 0])
 
     print("- Load parameters")
-    parameters = get_parameters("src/home_robot_hw/configs/default.yaml")
+    parameters = get_parameters("src/robot_hw_python/configs/default.yaml")
     # print(parameters)
     if explore_iter >= 0:
         parameters["exploration_steps"] = explore_iter
@@ -96,23 +96,9 @@ def main(
     demo = RobotAgent(
         robot, parameters, re = re, log_dir = 'debug' + '_' + formatted_datetime
     )
-    if input_path:
-        print('start reading from old pickle file')
-        demo.voxel_map.read_from_pickle(filename = input_path)
-        print('finish reading from old pickle file')
-
-    def send_image():
-        while True:
-            if robot.nav._is_enabled:
-                obs = robot.get_observation()
-                demo.image_sender.send_images(obs)
-
-    img_thread = threading.Thread(target=send_image)
-    img_thread.daemon = True
-    img_thread.start()
-
+    
     while True:
-        mode = input('select mode? E/N/S')
+        mode = 'N'
         if mode == 'S':
             break
         if mode == 'E':
@@ -120,7 +106,7 @@ def main(
             demo.run_exploration(
                 rate,
                 manual_wait,
-                explore_iter=parameters["exploration_steps"],
+                explore_iter=2,
                 task_goal=object_to_find,
                 go_home_at_end=navigate_home,
                 visualize=show_intermediate_maps,
@@ -139,38 +125,40 @@ def main(
         else:
             robot.switch_to_navigation_mode()
             text = input('Enter object name: ')
-            point = demo.image_sender.query_text(text)
-            if not demo.navigate(point):
-                continue
-            cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
-            robot.switch_to_navigation_mode()
-            xyt = robot.nav.get_base_pose()
-            xyt[2] = xyt[2] + np.pi / 2
-            robot.nav.navigate_to(xyt)
+            # point = demo.image_sender.query_text(text)
+            # if not demo.navigate(point):
+            #     continue
+            # cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            # robot.switch_to_navigation_mode()
+            # xyt = robot.nav.get_base_pose()
+            # xyt[2] = xyt[2] + np.pi / 2
+            # robot.nav.navigate_to(xyt)
 
             if input('You want to run manipulation: y/n') == 'n':
                 continue
-            camera_xyz = robot.head.get_pose()[:3, 3]
-            theta = compute_tilt(camera_xyz, point)
+            # camera_xyz = robot.head.get_pose()[:3, 3]
+            # theta = compute_tilt(camera_xyz, point)
+            theta = -0.6
             demo.manipulate(text, theta)
             
-            robot.switch_to_navigation_mode()
-            if input('You want to run placing: y/n') == 'n':
-                continue
+            # robot.switch_to_navigation_mode()
+            # if input('You want to run placing: y/n') == 'n':
+            #     continue
             text = input('Enter receptacle name: ')
-            point = demo.image_sender.query_text(text)
-            if not demo.navigate(point):
-                continue
-            cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
-            robot.switch_to_navigation_mode()
-            xyt = robot.nav.get_base_pose()
-            xyt[2] = xyt[2] + np.pi / 2
-            robot.nav.navigate_to(xyt)
+            # point = demo.image_sender.query_text(text)
+            # if not demo.navigate(point):
+            #     continue
+            # cv2.imwrite(text + '.jpg', demo.robot.get_observation().rgb[:, :, [2, 1, 0]])
+            # robot.switch_to_navigation_mode()
+            # xyt = robot.nav.get_base_pose()
+            # xyt[2] = xyt[2] + np.pi / 2
+            # robot.nav.navigate_to(xyt)
         
             if input('You want to run placing: y/n') == 'n':
                 continue
             camera_xyz = robot.head.get_pose()[:3, 3]
-            theta = compute_tilt(camera_xyz, point)
+            # theta = compute_tilt(camera_xyz, point)
+            theta = -0.6
             demo.place(text, theta)
 
 
