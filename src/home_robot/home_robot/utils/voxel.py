@@ -39,6 +39,8 @@ from torch_geometric.nn.pool.consecutive import consecutive_cluster
 from torch_geometric.nn.pool.voxel_grid import voxel_grid
 from torch_geometric.utils import add_self_loops, scatter
 
+from sklearn.cluster import DBSCAN
+
 
 def project_points(points_3d, K, pose):
     if not isinstance(K, torch.Tensor):
@@ -164,11 +166,11 @@ class VoxelizedPointcloud:
                 ),
                 dim = 0)
 
-            if self._entity_ids is not None:
-                removed_entities, removed_counts = torch.unique(self._entity_ids.detach().cpu()[~indices], return_counts = True)
-                total_counts = torch.bincount(self._entity_ids.detach().cpu())
-                entities_to_be_removed = removed_entities[(removed_counts > total_counts[removed_entities] * 0.75) | (total_counts[removed_entities] - removed_counts < 5)]
-                indices = indices & ~torch.isin(self._entity_ids.detach().cpu(), entities_to_be_removed)
+            # if self._entity_ids is not None:
+            #     removed_entities, removed_counts = torch.unique(self._entity_ids.detach().cpu()[~indices], return_counts = True)
+            #     total_counts = torch.bincount(self._entity_ids.detach().cpu())
+            #     entities_to_be_removed = removed_entities[(removed_counts > total_counts[removed_entities] * 0.75) | (total_counts[removed_entities] - removed_counts < 5)]
+            #     indices = indices & ~torch.isin(self._entity_ids.detach().cpu(), entities_to_be_removed)
         
             print('Clearing non valid points...')
             print('Removing ' + str((~indices).sum().item()) + ' points.')
@@ -184,6 +186,24 @@ class VoxelizedPointcloud:
                 self._obs_counts = self._obs_counts[indices]
             if self._entity_ids is not None:
                 self._entity_ids = self._entity_ids[indices]
+
+            if self._obs_counts is not None:
+                dbscan = DBSCAN(eps=self.voxel_size * 2, min_samples=20)
+                cluster_vertices = torch.cat((self._points.detach().cpu(), self._obs_counts.detach().cpu().reshape(-1,1) * 1000), -1).numpy()
+                clusters = dbscan.fit(cluster_vertices)
+                labels = clusters.labels_
+                indices = labels != -1
+                self._points = self._points[indices]
+                if self._features is not None:
+                    self._features = self._features[indices]
+                if self._weights is not None:
+                    self._weights= self._weights[indices]
+                if self._rgb is not None:
+                    self._rgb = self._rgb[indices]
+                if self._obs_counts is not None:
+                    self._obs_counts = self._obs_counts[indices]
+                if self._entity_ids is not None:
+                    self._entity_ids = self._entity_ids[indices]
 
     def add(
         self,

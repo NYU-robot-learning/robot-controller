@@ -93,16 +93,16 @@ class ObjectHandler:
         # self.rerun_frame += 1
 
         if self.action == 'pick':
-            rr.init("Picking", spawn = False)
-            rr.connect('100.108.67.79:9876')
+            rr.init("Picking", spawn = True)
+            # rr.connect('100.108.67.79:9876')
             rr.log('all_anygrasp_estimated_poses', rr.Clear(recursive = True), static = True)
             rr.log('Image_received_by_robot', rr.Clear(recursive = True), static = True)
             rr.log('robot_monologue', rr.Clear(recursive = True), static = True)
             rr.log('selected_pose', rr.Clear(recursive = True), static = True)
             rr.log('object_detecion_results', rr.Clear(recursive = True), static = True)
         else:
-            rr.init("Placing", spawn = False)
-            rr.connect('100.108.67.79:9876')
+            rr.init("Placing", spawn = True)
+            # rr.connect('100.108.67.79:9876')
             rr.log('Image_received_by_robot', rr.Clear(recursive = True), static = True)
             rr.log('robot_monologue', rr.Clear(recursive = True), static = True)
             rr.log('proposed_placing_location', rr.Clear(recursive = True), static = True)
