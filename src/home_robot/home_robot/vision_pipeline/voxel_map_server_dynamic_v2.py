@@ -1,6 +1,6 @@
 import zmq
 
-from scannet import CLASS_LABELS_200
+from home_robot.vision_pipeline.scannet import CLASS_LABELS_200
 
 import cv2
 import numpy as np
@@ -24,9 +24,9 @@ from matplotlib import pyplot as plt
 import pickle
 from pathlib import Path
 # This VoxelizedPointCloud is exactly the same thing as that in home_robot.util.voxel, rewrite here just for easy debugging
-from voxel import VoxelizedPointcloud
+# from voxel import VoxelizedPointcloud
 from home_robot.utils.voxel import VoxelizedPointcloud
-from voxel_map_localizer import VoxelMapLocalizer
+from home_robot.vision_pipeline.voxel_map_localizer import VoxelMapLocalizer
 from home_robot.agent.multitask import get_parameters
 from home_robot.mapping.voxel import (
     SparseVoxelMapVoxel as SparseVoxelMap,
@@ -52,79 +52,10 @@ import hydra
 from transformers import AutoProcessor, AutoModel
 import rerun as rr
 
-
 from io import BytesIO
 from PIL import Image
 
-def load_socket(port_number):
-    context = zmq.Context()
-    socket = context.socket(zmq.REP)
-    socket.bind("tcp://*:" + str(port_number))
-
-    return socket
-
-def send_array(socket, A, flags=0, copy=True, track=False):
-    """send a numpy array with metadata"""
-    A = np.array(A)
-    md = dict(
-        dtype = str(A.dtype),
-        shape = A.shape,
-    )
-    socket.send_json(md, flags|zmq.SNDMORE)
-    return socket.send(np.ascontiguousarray(A), flags, copy=copy, track=track)
-
-def recv_array(socket, flags=0, copy=True, track=False):
-    """recv a numpy array"""
-    md = socket.recv_json(flags=flags)
-    msg = socket.recv(flags=flags, copy=copy, track=track)
-    A = np.frombuffer(msg, dtype=md['dtype'])
-    return A.reshape(md['shape'])
-
-def send_rgb_img(socket, img):
-    img = img.astype(np.uint8) 
-    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 90]
-    _, img_encoded = cv2.imencode('.jpg', img, encode_param)
-    socket.send(img_encoded.tobytes())
-
-def recv_rgb_img(socket):
-    img = socket.recv()
-    img = np.frombuffer(img, dtype=np.uint8)
-    img = cv2.imdecode(img, cv2.IMREAD_COLOR)
-    return img
-
-def send_depth_img(socket, depth_img):
-    depth_img = (depth_img * 1000).astype(np.uint16)
-    encode_param = [int(cv2.IMWRITE_PNG_COMPRESSION), 3]  # Compression level from 0 (no compression) to 9 (max compression)
-    _, depth_img_encoded = cv2.imencode('.png', depth_img, encode_param)
-    socket.send(depth_img_encoded.tobytes())
-
-def recv_depth_img(socket):
-    depth_img = socket.recv()
-    depth_img = np.frombuffer(depth_img, dtype=np.uint8)
-    depth_img = cv2.imdecode(depth_img, cv2.IMREAD_UNCHANGED)
-    depth_img = (depth_img / 1000.)
-    return depth_img
-
-def send_everything(socket, rgb, depth, intrinsics, pose):
-    send_rgb_img(socket, rgb)
-    socket.recv_string()
-    send_depth_img(socket, depth)
-    socket.recv_string()
-    send_array(socket, intrinsics)
-    socket.recv_string()
-    send_array(socket, pose)
-    socket.recv_string()
-
-def recv_everything(socket):
-    rgb = recv_rgb_img(socket)
-    socket.send_string('')
-    depth = recv_depth_img(socket)
-    socket.send_string('')
-    intrinsics = recv_array(socket)
-    socket.send_string('')
-    pose = recv_array(socket)
-    socket.send_string('')
-    return rgb, depth, intrinsics, pose
+from home_robot.vision_pipeline.communication_util import load_socket, send_array, recv_array, send_rgb_img, recv_rgb_img, send_depth_img, recv_depth_img, send_everything, recv_everything
 
 def numpy_to_pcd(xyz: np.ndarray, rgb: np.ndarray = None) -> o3d.geometry.PointCloud:
     """Create an open3d pointcloud from a single xyz/rgb pair"""
@@ -194,15 +125,15 @@ def get_xyz(depth, pose, intrinsics):
 
 class ImageProcessor:
     def __init__(self,  
-        owl = False, 
+        vision_method = 'mask*lip', 
         siglip = True,
         device = 'cuda',
         min_depth = 0.25,
-        max_depth = 2.0,
+        max_depth = 2.5,
         img_port = 5560,
         text_port = 5561,
         pcd_path: str = None,
-        navigation_only = False,
+        open_communication = True,
         rerun = True,
         static = True
     ):
@@ -220,22 +151,26 @@ class ImageProcessor:
         self.min_depth = min_depth
         self.max_depth = max_depth
         self.obs_count = 0
-        self.owl = owl
+        # There are three vision methods:
+        # 1. 'mask*lip' Following the idea of https://arxiv.org/abs/2112.01071, remove the last layer of any VLM and obtain the dense features
+        # 2. 'mask&*lip' Following the idea of https://mahis.life/clip-fields/, extract segmentation mask and assign a vision-language feature to it
+        # 3. 'detecion&mask*lip' Combining above two methods, first obtain some bounding boxes, extract dense features of each bounding box
+        self.vision_method = vision_method
         # If cuda is not available, then device will be forced to be cpu
         if not torch.cuda.is_available():
             device = 'cpu'
         self.device = device
         self.pcd_path = pcd_path
 
-        self.create_vision_model()
         self.create_obstacle_map()
+        self.create_vision_model()
+        
+        if open_communication:
+            self.img_socket = load_socket(img_port)
+            self.text_socket = load_socket(text_port)
 
-        self.img_socket = load_socket(img_port)
-        self.text_socket = load_socket(text_port)
+            self.voxel_map_lock = threading.Lock()  # Create a lock for synchronizing access to `self.voxel_map_localizer`
 
-        self.voxel_map_lock = threading.Lock()  # Create a lock for synchronizing access to `self.voxel_map_localizer`
-
-        if not navigation_only:
             self.img_thread = threading.Thread(target=self._recv_image)
             self.img_thread.daemon = True
             self.img_thread.start()
@@ -298,20 +233,18 @@ class ImageProcessor:
             self.clip_model = AutoModel.from_pretrained("google/siglip-so400m-patch14-384").to(self.device)
             self.clip_preprocess = AutoProcessor.from_pretrained("google/siglip-so400m-patch14-384")
             self.clip_model.eval()
-        if self.owl:
+        if self.vision_method == 'mask&*lip':
             if not os.path.exists('sam_vit_b_01ec64.pth'):
                 wget.download('https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', out = 'sam_vit_b_01ec64.pth')
             sam = sam_model_registry['vit_b'](checkpoint='sam_vit_b_01ec64.pth')
             self.mask_predictor = SamPredictor(sam)
             self.mask_predictor.model = self.mask_predictor.model.eval().to(self.device)
-            # self.owl_processor = AutoProcessor.from_pretrained("google/owlvit-base-patch32")
-            # self.owl_model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32").eval().to(self.device)
-            # self.texts = [['a photo of ' + text for text in CLASS_LABELS_200]]
+        if self.vision_method != 'mask*lip':
             self.yolo_model = YOLOWorld('yolov8s-worldv2.pt')
             self.texts = CLASS_LABELS_200
             self.yolo_model.set_classes(self.texts)
         # self.voxel_map_localizer = VoxelMapLocalizer(device = self.device)
-        self.voxel_map_localizer = VoxelMapLocalizer(log = self.log, device = 'cpu', siglip = self.siglip)
+        self.voxel_map_localizer = VoxelMapLocalizer(self.voxel_map, device = self.device, siglip = self.siglip)
         if self.pcd_path is not None:
             print('Loading old semantic memory')
             self.voxel_map_localizer.voxel_pcd = torch.load(self.pcd_path)
@@ -337,12 +270,12 @@ class ImageProcessor:
         obs = None
         # Do visual grounding
         if text != '':
-            # with self.voxel_map_lock:
-            #     localized_point, debug_text, obs, pointcloud = self.voxel_map_localizer.localize_A_v2(text, debug = True, return_debug = True)
             with self.voxel_map_lock:
-                localized_point = self.voxel_map_localizer.localize_AonB(text)
-                obs = self.voxel_map_localizer.find_obs_id_for_A(text).item()
-                debug_text = None
+                localized_point, debug_text, obs, pointcloud = self.voxel_map_localizer.localize_A_v2(text, debug = True, return_debug = True)
+            # with self.voxel_map_lock:
+            #     localized_point = self.voxel_map_localizer.localize_AonB(text)
+            #     obs = self.voxel_map_localizer.find_obs_id_for_A(text).item()
+            #     debug_text = None
             if localized_point is not None:
                 rr.log("/object", rr.Points3D([localized_point[0], localized_point[1], 1.5], colors=torch.Tensor([1, 0, 0]), radii=0.1), static = self.static)
         # Do Frontier based exploration
@@ -362,11 +295,11 @@ class ImageProcessor:
             localized_point = np.array([localized_point[0], localized_point[1], 0])
 
         point = self.sample_navigation(start_pose, localized_point)
-        # if mode == 'navigation' and np.min(np.linalg.norm(np.asarray(localized_point)[:2] - np.asarray(pointcloud)[:, :2], axis = -1)) > 1.0:
-        #     localized_point = self.sample_frontier(start_pose, None)
-        #     mode = 'exploration'
-        #     point = self.sample_navigation(start_pose, localized_point)
-        #     debug_text += '## All reachable points of robot are too far from the target object, explore to find new paths. \n'
+        if mode == 'navigation' and np.min(np.linalg.norm(np.asarray(point)[:2] - np.asarray(pointcloud)[:, :2], axis = -1)) > 0.8:
+            localized_point = self.sample_frontier(start_pose, None)
+            mode = 'exploration'
+            point = self.sample_navigation(start_pose, localized_point)
+            debug_text += '## All reachable points of robot are too far from the target object, explore to find new paths. \n'
 
         if self.rerun:
             buf = BytesIO()
@@ -384,27 +317,24 @@ class ImageProcessor:
         plt.clf()
 
         if self.rerun:
-            # if text is not None and text != '':
-            #     debug_text = '## The goal is to navigate to **' + text + '**.\n' + debug_text
-            # else:
-            #     debug_text = '## The robot does not need to navigate to anything. It just looks around. \n'
-            if text != '':
-                debug_text = '### The goal is to navigate to ' + text + '.\n ### I displayed the past observation most similar to ' + text + '  on the screen.\n ### I will navigate to it following paths generated by A* planner. \n ### The path is visualized on the pointcloud'
+            if text is not None and text != '':
+                debug_text = '### The goal is to navigate to ' + text + '.\n' + debug_text
             else:
                 debug_text = '### I have not received any text query from human user.\n ### So, I plan to explore the environment with Frontier-based exploration.\n'
+            # if text != '':
+            #     debug_text = '### The goal is to navigate to ' + text + '.\n ### I displayed the past observation most similar to ' + text + '  on the screen.\n ### I will navigate to it following paths generated by A* planner. \n ### The path is visualized on the pointcloud'
+            # else:
+            #     debug_text = '### I have not received any text query from human user.\n ### So, I plan to explore the environment with Frontier-based exploration.\n'
             debug_text = '# Robot\'s monologue: \n' + debug_text
             rr.log("robot_monologue", rr.TextDocument(debug_text, media_type = rr.MediaType.MARKDOWN), static = self.static)
 
         if obs is not None and mode == 'navigation':
-            rgb = self.voxel_map.observations[obs_id - 1].rgb
+            rgb = self.voxel_map.observations[obs - 1].rgb
             if not self.rerun:
                 cv2.imwrite(self.log + '/debug_' + text + '.png', rgb[:, :, [2, 1, 0]])
             else:
                 rr.log('/Past_observation_most_similar_to_text', rr.Image(rgb), static = self.static)
-        # else:
-        #     if self.rerun:
-        #         rr.log('/Past_observation_most_similar_to_text', rr.Image(np.zeros((256, 256, 3))), static = self.static)
-
+        traj = None
         waypoints = None
         if point is None:
             print('Unable to find any target point, some exception might happen')
@@ -417,8 +347,8 @@ class ImageProcessor:
                 # If we are navigating to some object of interst, send (x, y, z) of 
                 # the object so that we can make sure the robot looks at the object after navigation
                 print(waypoints[-1][:2], start_pose[:2])
-                # finished = len(waypoints) <= 10 and mode == 'navigation'
-                finished = mode == 'navigation'
+                finished = len(waypoints) <= 10 and mode == 'navigation'
+                # finished = mode == 'navigation'
                 if not finished:
                     waypoints = waypoints[:7]
                 traj = self.planner.clean_path_for_xy(waypoints)
@@ -604,14 +534,6 @@ class ImageProcessor:
 
     def run_owl_sam_clip(self, rgb, mask, world_xyz):
         with torch.no_grad():
-            # inputs = self.owl_processor(text=self.texts, images=rgb, return_tensors="pt")
-            # for input in inputs:
-            #     inputs[input] = inputs[input].to(self.device)
-            # outputs = self.owl_model(**inputs)
-            # target_sizes = torch.Tensor([rgb.size()[-2:]]).to(self.device)
-            # results = self.owl_processor.post_process_object_detection(outputs=outputs, threshold=0.1, target_sizes=target_sizes)
-            # if len(results[0]['boxes']) == 0:
-            #     return
             results = self.yolo_model.predict(rgb.permute(1,2,0)[:, :, [2, 1, 0]].numpy(), conf=0.15, verbose=False)
             xyxy_tensor = results[0].boxes.xyxy
             if len(xyxy_tensor) == 0:
@@ -820,8 +742,9 @@ class ImageProcessor:
             obs, exp = self.voxel_map.get_2d_map()
 
             if not load_memory:
-                if self.owl:
-                    # self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+                if self.vision_method == 'mask&*lip':
+                    self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+                elif self.vision_method == 'detecion&mask*lip':
                     self.run_detection_encoder(rgb, ~valid_depth, world_xyz)
                 else:
                     self.run_mask_clip(rgb, ~valid_depth, world_xyz)
@@ -917,7 +840,7 @@ class ImageProcessor:
                 else:
                     rr.log(text + '/Memory_image', rr.Image(rgb))
 
-                self.sample_navigation([0, 0, 0], localized_point)
+                self.sample_navigation([pose[0, -1], pose[1, -1], 0], localized_point)
                 # plt.scatter(explore_target[1], explore_target[0], s = 15)
                 buf = BytesIO()
                 plt.title(str(self.voxel_map_localizer.find_alignment_over_model(text).cpu().max().item()) + ' ' + str(self.voxel_map_localizer.check_existence(text, obs_id)) + ' ' + text)
@@ -962,9 +885,10 @@ class ImageProcessor:
         with self.voxel_map_lock:
             self.voxel_map_localizer.voxel_pcd.clear_points(depth, torch.from_numpy(intrinsics), torch.from_numpy(pose))
             self.voxel_map.voxel_pcd.clear_points(depth, torch.from_numpy(intrinsics), torch.from_numpy(pose))
-
-        if self.owl:
-            # self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+        
+        if self.vision_method == 'mask&*lip':
+            self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
+        elif self.vision_method == 'detecion&mask*lip':
             self.run_detection_encoder(rgb, ~valid_depth, world_xyz)
         else:
             self.run_mask_clip(rgb, ~valid_depth, world_xyz)
@@ -1037,6 +961,7 @@ class ImageProcessor:
                 base_pose=base_pose,
                 camera_K=K,
             )
+            self.obs_count += 1
         self.voxel_map_localizer.voxel_pcd._points = data["combined_xyz"]
         self.voxel_map_localizer.voxel_pcd._features = data["combined_feats"]
         self.voxel_map_localizer.voxel_pcd._weights = data["combined_weights"]
@@ -1091,7 +1016,7 @@ def main(cfg):
     if not cfg.load_folder is None:
         print('Loading ', cfg.load_number, ' images from ', cfg.load_folder)
         # ['schoolbag', 'toy drill', 'red bowl', 'green bowl', 'purple cup', 'red cup', 'white rag', 'red apple', 'yellow ball', 'green rag', 'orange sofa', 'orange tape']
-        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['schoolbag', 'toy drill', 'green bowl'])
+        imageProcessor.load(cfg.load_folder, cfg.load_number, texts = ['purple body spray', 'toy drill', 'green bowl', 'orange tape'])
     elif not cfg.pickle_file_name is None:
         imageProcessor.read_from_pickle(cfg.pickle_file_name)
     print(imageProcessor.voxel_map_localizer.voxel_pcd._points)

@@ -66,9 +66,9 @@ def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
         return centroids, extends, similarity_max_list, points
 
 class VoxelMapLocalizer():
-    def __init__(self, log = None, model_config = 'ViT-B/16', device = 'cuda', siglip = True):
-        self.log = log
-        self.device = 'cuda'
+    def __init__(self, voxel_map_wrapper = None, model_config = 'ViT-B/16', device = 'cuda', siglip = True):
+        self.voxel_map_wrapper = voxel_map_wrapper
+        self.device = device
         # self.clip_model, self.preprocessor = clip.load(model_config, device=device)
         self.siglip = siglip
         if not self.siglip:
@@ -203,7 +203,8 @@ class VoxelMapLocalizer():
     def check_existence(self, text, obs_id):
         if obs_id <= 0:
             return False
-        rgb = np.load(self.log + '/rgb' + str(obs_id) + '.npy')
+        # rgb = np.load(self.log + '/rgb' + str(obs_id) + '.npy')
+        rgb = self.voxel_map_wrapper.observations[obs_id - 1].rgb
         rgb = torch.from_numpy(rgb)
         rgb = rgb.permute(2, 0, 1).to(torch.uint8)
         inputs = self.exist_processor(text=[[text]], images=rgb, return_tensors="pt")
@@ -220,7 +221,8 @@ class VoxelMapLocalizer():
         # xyxy_tensor = results[0].boxes.xyxy
         # # return len(xyxy_tensor) != 0
         # xyxys = xyxy_tensor.detach().cpu().numpy()
-        depth = np.load(self.log + '/depth' + str(obs_id) + '.npy')
+        # depth = np.load(self.log + '/depth' + str(obs_id) + '.npy')
+        depth = self.voxel_map_wrapper.observations[obs_id - 1].depth
         for xyxy in xyxys:
             w, h = depth.shape
             tl_x, tl_y, br_x, br_y = xyxy
