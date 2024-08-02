@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 from typing import List, Optional
+import time
 
 import numpy as np
 from home_robot.core.state import ManipulatorBaseParams
@@ -19,8 +20,10 @@ from .abstract import AbstractControlModule, enforce_enabled
 
 
 GRIPPER_MOTION_SECS = 2.2
-JOINT_POS_TOL = 0.015
-JOINT_ANG_TOL = 0.05
+JOINT_POS_TOL = 0.025
+JOINT_ANG_TOL = 0.075
+MAX_JOINTS = [1.5, 1.098, 0.512, 4.468, 0.400, 2.806]
+Min_JOINTS = [-1.5, 0.005, 0.005, -1.296, -1.574, -2.979]
 
 
 class StretchManipulationClient(AbstractControlModule):
@@ -124,7 +127,41 @@ class StretchManipulationClient(AbstractControlModule):
         joint_positions: List[float],
         relative: bool = False,
         blocking: bool = True,
-        debug: bool = False,
+        move_base: bool = True,
+        velocities = None,
+        timeout: float = 4.0,
+    ):
+        max_joints, min_joints = np.asarray(MAX_JOINTS), np.asarray(Min_JOINTS)
+        if relative:
+            max_joints, min_joints = max_joints - np.asarray(joint_positions), min_joints - np.asarray(joint_positions)
+        joint_positions = np.clip(np.asarray(joint_positions), a_min = min_joints, a_max = max_joints)
+        if relative:
+            target_positions = np.asarray(self.get_joint_positions()) + np.asarray(joint_positions)
+        else:
+            target_positions = np.asarray(joint_positions)
+        start_time = time.time()
+        while not np.allclose(np.asarray(self.get_joint_positions())[:3], target_positions[:3], atol = JOINT_POS_TOL) \
+              or not np.allclose(np.asarray(self.get_joint_positions())[3:], target_positions[3:], atol = JOINT_ANG_TOL):
+            last_state = np.asarray(self.get_joint_positions())
+            self.goto_joint_positions_open_loop( \
+                joint_positions = joint_positions, \
+                relative = relative, \
+                blocking = blocking, \
+                move_base = move_base, \
+                velocities = velocities)
+            # if time.time() - start_time > timeout or (np.allclose(np.asarray(self.get_joint_positions())[:3], last_state[:3], atol = JOINT_POS_TOL) and np.allclose(np.asarray(self.get_joint_positions())[3:], last_state[3:], atol = JOINT_ANG_TOL)):
+            #     break
+            if time.time() - start_time > timeout:
+                break
+            time.sleep(0.1)
+
+    @enforce_enabled
+    def goto_joint_positions_open_loop(
+        self,
+        joint_positions: List[float],
+        relative: bool = False,
+        blocking: bool = True,
+        debug: bool = True,
         move_base: bool = True,
         velocities=None,
     ):

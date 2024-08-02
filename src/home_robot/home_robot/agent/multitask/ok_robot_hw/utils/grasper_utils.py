@@ -30,11 +30,11 @@ def capture_and_process_image(camera, mode, obj, socket, hello_robot):
             hello_robot.move_to_position(base_trans=base_trans,
                                     head_pan=head_pan,
                                     head_tilt=head_tilt)
-            time.sleep(2)
+            # time.sleep(2)
         
         elif (retry_flag !=0 and side_retries == 3):
             print("Tried in all angles but couldn't succed")
-            time.sleep(2)
+            # time.sleep(2)
             return None, None, None
 
         elif (side_retries == 2 and tilt_retries == 3):
@@ -128,7 +128,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
 
     # Lifting the arm to high position as part of pregrasping position
     robot.move_to_position(lift_pos = 1.05, head_pan = None, head_tilt = None)
-    time.sleep(2)
+    # time.sleep(2)
 
     # Rotation for aligning Robot gripper frame to Model gripper frame
     rotation2_top = PyKDL.Rotation(0, 0, 1, 1, 0, 0, 0, -1, 0)
@@ -143,7 +143,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
             [final_rotation.GetRPY()[0], final_rotation.GetRPY()[1], final_rotation.GetRPY()[2]],
             [1],
         )
-    time.sleep(1)
+    # time.sleep(1)
 
     # Final grasping point relative to camera
     cam2gripper_transform, _, _ = robot.get_joint_transform(base_node, gripper_node)
@@ -153,7 +153,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     cam2base_transform, _, _ = robot.get_joint_transform(base_node, 'base_link')
     base_point = cam2base_transform * point
 
-    diff_value = (0.227 - gripper_depth - gripper_height) # 0.227 is the distance between link_Straight_gripper node and the gripper tip
+    diff_value = (0.228 - gripper_depth - gripper_height) # 0.228 is the distance between link_Straight_gripper node and the gripper tip
     transformed_point1[2] -= (diff_value)
     ref_diff = (diff_value)
 
@@ -212,22 +212,22 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
 
     # Lifts the arm
     robot.move_to_position(lift_pos = 1.0)
-    time.sleep(1)
+    # time.sleep(1)
 
     # Tucks the gripper so that while moving to place it wont collide with any obstacles
     robot.move_to_position(arm_pos = 0.01)
-    time.sleep(1)
+    # time.sleep(1)
     robot.move_to_position(wrist_pitch = 0.0)
-    time.sleep(1)
-    robot.move_to_position(wrist_yaw  = 2.5)
-    time.sleep(1)
+    # time.sleep(1)
+    robot.move_to_position(wrist_yaw = 2.0)
+    # time.sleep(1)
 
     # rotate the arm wrist onto the base
-    if abs(robot.robot.manip.get_joint_positions()[3] - 2.5) > 0.1:
-        robot.move_to_position(wrist_yaw  = - 2.5)
-        time.sleep(1)
+    if abs(robot.robot.manip.get_joint_positions()[3] - 2.0) > 0.1:
+        robot.move_to_position(wrist_yaw  = -2.0)
+        # time.sleep(1)
 
     # Put down the arm    
     robot.move_to_position(lift_pos = 0.45)
-    time.sleep(1)
+    # time.sleep(1)
 
