@@ -211,7 +211,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     robot.pickup(gripper_width)
 
     # Lifts the arm
-    robot.move_to_position(lift_pos = 1.0)
+    robot.move_to_position(lift_pos = 1.05)
     # time.sleep(1)
 
     # Tucks the gripper so that while moving to place it wont collide with any obstacles
@@ -229,5 +229,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
 
     # Put down the arm    
     robot.move_to_position(lift_pos = 0.45)
+    if abs(robot.robot.manip.get_joint_positions()[3] - 2.0) < 0.1:
+        robot.move_to_position(wrist_yaw = 2.5)
     # time.sleep(1)
 

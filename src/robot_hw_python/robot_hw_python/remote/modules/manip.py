@@ -22,8 +22,8 @@ from .abstract import AbstractControlModule, enforce_enabled
 GRIPPER_MOTION_SECS = 2.2
 JOINT_POS_TOL = 0.025
 JOINT_ANG_TOL = 0.075
-MAX_JOINTS = [1.5, 1.098, 0.512, 4.468, 0.400, 2.806]
-Min_JOINTS = [-1.5, 0.005, 0.005, -1.296, -1.574, -2.979]
+MAX_JOINTS = [1.5, 1.09, 0.512, 4.4, 0.3, 2.75]
+MIN_JOINTS = [-1.5, 0.005, 0.005, -1.28, -1.55, -2.95]
 
 
 class StretchManipulationClient(AbstractControlModule):
@@ -131,21 +131,22 @@ class StretchManipulationClient(AbstractControlModule):
         velocities = None,
         timeout: float = 4.0,
     ):
-        max_joints, min_joints = np.asarray(MAX_JOINTS), np.asarray(Min_JOINTS)
-        if relative:
-            max_joints, min_joints = max_joints - np.asarray(joint_positions), min_joints - np.asarray(joint_positions)
-        joint_positions = np.clip(np.asarray(joint_positions), a_min = min_joints, a_max = max_joints)
+        # max_joints, min_joints = np.asarray(MAX_JOINTS), np.asarray(MIN_JOINTS)
+        # if relative:
+        #     max_joints, min_joints = max_joints - np.asarray(joint_positions), min_joints - np.asarray(joint_positions)
+        # joint_positions = np.clip(np.asarray(joint_positions), a_min = min_joints, a_max = max_joints)
         if relative:
             target_positions = np.asarray(self.get_joint_positions()) + np.asarray(joint_positions)
         else:
             target_positions = np.asarray(joint_positions)
+        target_positions = np.clip(target_positions, a_min = np.asarray(MIN_JOINTS), a_max = np.asarray(MAX_JOINTS))
         start_time = time.time()
         while not np.allclose(np.asarray(self.get_joint_positions())[:3], target_positions[:3], atol = JOINT_POS_TOL) \
               or not np.allclose(np.asarray(self.get_joint_positions())[3:], target_positions[3:], atol = JOINT_ANG_TOL):
             last_state = np.asarray(self.get_joint_positions())
             self.goto_joint_positions_open_loop( \
-                joint_positions = joint_positions, \
-                relative = relative, \
+                joint_positions = target_positions, \
+                relative = False, \
                 blocking = blocking, \
                 move_base = move_base, \
                 velocities = velocities)
