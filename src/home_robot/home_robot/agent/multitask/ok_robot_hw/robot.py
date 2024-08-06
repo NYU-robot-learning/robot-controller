@@ -226,7 +226,7 @@ class HelloRobot:
 
         # print(f"current state {state}")
         # print(f"target state {target_state}")
-        self.robot.manip.goto_joint_positions(target_state)
+        self.robot.manip.goto_joint_positions(target_state, velocities = velocities)
         # time.sleep(1)
 
         #NOTE: below code is to fix the pitch drift issue in current hello-robot. Remove it if there is no pitch drift issue

@@ -129,7 +129,7 @@ class StretchManipulationClient(AbstractControlModule):
         blocking: bool = True,
         move_base: bool = True,
         velocities = None,
-        timeout: float = 4.0,
+        timeout: float = 4.5,
     ):
         # max_joints, min_joints = np.asarray(MAX_JOINTS), np.asarray(MIN_JOINTS)
         # if relative:

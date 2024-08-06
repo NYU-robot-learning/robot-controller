@@ -153,7 +153,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     cam2base_transform, _, _ = robot.get_joint_transform(base_node, 'base_link')
     base_point = cam2base_transform * point
 
-    diff_value = (0.228 - gripper_depth - gripper_height) # 0.228 is the distance between link_Straight_gripper node and the gripper tip
+    diff_value = (0.226 - gripper_depth - gripper_height) # 0.228 is the distance between link_Straight_gripper node and the gripper tip
     transformed_point1[2] -= (diff_value)
     ref_diff = (diff_value)
 
@@ -177,7 +177,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     # The distance between gripper and point is covered gradullay to allow for velocity control when it approaches the object
     # Lower velocity helps is not topping the light objects
     diff = abs(curr_diff - ref_diff)
-    velocities = [1]*8
+    velocities = [1.0]*8
     velocities[5:] = [0.03, 0.03, 0.03, 0.03]
     velocities[0] = 0.03
     if diff > 0.08:
@@ -194,7 +194,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
         diff = diff - dist
         
     while diff > 0.01:
-        dist = min(0.03, diff)
+        dist = min(0.035, diff)
         print("Move to Secondary intermediate point with sleep 2s")
         robot.move_to_pose(
             [0, 0, dist],   
