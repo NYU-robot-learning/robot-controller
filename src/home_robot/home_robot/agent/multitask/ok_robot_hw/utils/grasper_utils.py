@@ -136,7 +136,6 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     # final Rotation of gripper to hold the objet
     final_rotation = transformed_frame.M * rotation2_top
     # print(f"final rotation - {final_rotation.GetRPY()}")
-    print("Rotation wrist with sleep of 2s")
     robot.move_to_position(gripper_pos = gripper_width)
     robot.move_to_pose(
             [0, 0, 0],
@@ -153,7 +152,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     cam2base_transform, _, _ = robot.get_joint_transform(base_node, 'base_link')
     base_point = cam2base_transform * point
 
-    diff_value = (0.226 - gripper_depth - gripper_height) # 0.228 is the distance between link_Straight_gripper node and the gripper tip
+    diff_value = (0.227 - gripper_depth - gripper_height) # 0.228 is the distance between link_Straight_gripper node and the gripper tip
     transformed_point1[2] -= (diff_value)
     ref_diff = (diff_value)
 
@@ -194,7 +193,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
         diff = diff - dist
         
     while diff > 0.01:
-        dist = min(0.035, diff)
+        dist = min(0.03, diff)
         print("Move to Secondary intermediate point with sleep 2s")
         robot.move_to_pose(
             [0, 0, dist],   
@@ -211,7 +210,7 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
     robot.pickup(gripper_width)
 
     # Lifts the arm
-    robot.move_to_position(lift_pos = 1.05)
+    robot.move_to_position(lift_pos = robot.robot.manip.get_joint_positions()[1] + 0.2)
     # time.sleep(1)
 
     # Tucks the gripper so that while moving to place it wont collide with any obstacles
@@ -228,8 +227,9 @@ def pickup(robot, rotation, translation, base_node, gripper_node, gripper_height
         # time.sleep(1)
 
     # Put down the arm    
-    robot.move_to_position(lift_pos = 0.45)
+    robot.move_to_position(lift_pos = 0.85)
     if abs(robot.robot.manip.get_joint_positions()[3] - 2.0) < 0.1:
         robot.move_to_position(wrist_yaw = 2.5)
+    robot.move_to_position(lift_pos = 0.6)
     # time.sleep(1)
 

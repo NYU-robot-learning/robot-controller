@@ -146,7 +146,7 @@ class HelloRobot:
         if not head_pan is None:
             target_head_pan = head_pan
         self.robot.head.set_pan_tilt(tilt = target_head_tilt, pan = target_head_pan)
-        time.sleep(0.7)
+        #time.sleep(0.7)
 
     def pickup(self, width):
         """
