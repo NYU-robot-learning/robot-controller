@@ -388,9 +388,9 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
             print('Target is valid:', target_is_valid)
             if not target_is_valid:
                 continue
-            if np.linalg.norm([selected_x - point[0], selected_y - point[1]]) < 0.4:
+            if np.linalg.norm([selected_x - point[0], selected_y - point[1]]) < 0.35:
                 continue
-            elif np.linalg.norm([selected_x - point[0], selected_y - point[1]]) <= 0.5:
+            elif np.linalg.norm([selected_x - point[0], selected_y - point[1]]) <= 0.45:
                 for i in [-1, 0, 1]:
                     for j in [-1, 0, 1]:
                         if obstacles[selected_target[0] + i][selected_target[1] + j]:

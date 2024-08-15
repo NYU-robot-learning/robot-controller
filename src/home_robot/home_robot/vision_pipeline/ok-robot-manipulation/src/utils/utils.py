@@ -10,6 +10,7 @@ from PIL import ImageDraw
 import rerun as rr
 import cv2
 from matplotlib import pyplot as plt
+import scipy
 
 
 def sample_points(points, sampling_rate=1):
@@ -24,6 +25,9 @@ def get_3d_points(cam: CameraParameters):
     xmap, ymap = np.arange(cam.depths.shape[1]), np.arange(cam.depths.shape[0])
     xmap, ymap = np.meshgrid(xmap, ymap)
     points_z = cam.depths
+    median_depth = scipy.ndimage.median_filter(points_z, size=5)
+    median_filter_error = np.absolute(points_z - median_depth)
+    points_z[median_filter_error > 0.01] = np.nan
     points_x = (xmap - cam.cx) / cam.fx * points_z
     points_y = (ymap - cam.cy) / cam.fy * points_z
 

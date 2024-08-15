@@ -128,7 +128,7 @@ class VoxelMapLocalizer():
         features = F.normalize(features, p=2, dim=-1)
         point_alignments = clip_text_tokens.float() @ features.float().T
     
-        print(point_alignments.shape)
+        # print(point_alignments.shape)
         return point_alignments
 
     # Currently we only support compute one query each time, in the future we might want to support check many queries
@@ -205,7 +205,6 @@ class VoxelMapLocalizer():
             return False
         # rgb = np.load(self.log + '/rgb' + str(obs_id) + '.npy')
         rgb = self.voxel_map_wrapper.observations[obs_id - 1].rgb
-        rgb = torch.from_numpy(rgb)
         rgb = rgb.permute(2, 0, 1).to(torch.uint8)
         inputs = self.exist_processor(text=[[text]], images=rgb, return_tensors="pt")
         for input in inputs:
@@ -227,8 +226,8 @@ class VoxelMapLocalizer():
             w, h = depth.shape
             tl_x, tl_y, br_x, br_y = xyxy
             tl_x, tl_y, br_x, br_y = int(max(0, tl_x.item())), int(max(0, tl_y.item())), int(min(h, br_x.item())), int(min(w, br_y.item()))
-            min_depth = np.min(depth[tl_y: br_y, tl_x: br_x].flatten())
-            if min_depth < 2.5 and not np.isnan(min_depth):
+            min_depth = torch.min(depth[tl_y: br_y, tl_x: br_x].flatten())
+            if min_depth < 2.5 and not torch.isnan(min_depth):
                 return True
         return False
 

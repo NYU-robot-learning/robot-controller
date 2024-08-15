@@ -26,22 +26,13 @@ from pathlib import Path
 # This VoxelizedPointCloud is exactly the same thing as that in home_robot.util.voxel, rewrite here just for easy debugging
 # from voxel import VoxelizedPointcloud
 from home_robot.utils.voxel import VoxelizedPointcloud
-from home_robot.vision_pipeline.voxel_map_localizer import VoxelMapLocalizer
+from home_robot.vision_pipeline.voxel_map_localizer_v2 import VoxelMapLocalizer
 from home_robot.agent.multitask import get_parameters
 from home_robot.mapping.voxel import (
     SparseVoxelMapVoxel as SparseVoxelMap,
     SparseVoxelMapNavigationSpaceVoxelDynamic as SparseVoxelMapNavigationSpace,
-    plan_to_frontier,
 )
-from home_robot.motion import (
-    ConfigurationSpace,
-    PlanResult,
-    RRTConnect,
-    Shortcut,
-    SimplifyXYT,
-    AStar
-)
-from home_robot.motion.stretch import HelloStretchKinematics
+from home_robot.motion import AStar
 
 import datetime
 
@@ -56,17 +47,6 @@ from io import BytesIO
 from PIL import Image
 
 from home_robot.vision_pipeline.communication_util import load_socket, send_array, recv_array, send_rgb_img, recv_rgb_img, send_depth_img, recv_depth_img, send_everything, recv_everything
-
-def numpy_to_pcd(xyz: np.ndarray, rgb: np.ndarray = None) -> o3d.geometry.PointCloud:
-    """Create an open3d pointcloud from a single xyz/rgb pair"""
-    xyz = xyz.reshape(-1, 3)
-    if rgb is not None:
-        rgb = rgb.reshape(-1, 3)
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(xyz)
-    if rgb is not None:
-        pcd.colors = o3d.utility.Vector3dVector(rgb)
-    return pcd
 
 def get_inv_intrinsics(intrinsics):
     # return intrinsics.double().inverse().to(intrinsics)
@@ -125,14 +105,13 @@ def get_xyz(depth, pose, intrinsics):
 
 class ImageProcessor:
     def __init__(self,  
-        vision_method = 'mask*lip', 
+        vision_method = 'mask&*lip', 
         siglip = True,
         device = 'cuda',
         min_depth = 0.25,
         max_depth = 2.5,
         img_port = 5560,
         text_port = 5561,
-        pcd_path: str = None,
         open_communication = True,
         rerun = True,
         static = True
@@ -160,16 +139,15 @@ class ImageProcessor:
         if not torch.cuda.is_available():
             device = 'cpu'
         self.device = device
-        self.pcd_path = pcd_path
 
         self.create_obstacle_map()
         self.create_vision_model()
+
+        self.voxel_map_lock = threading.Lock()  # Create a lock for synchronizing access to `self.voxel_map_localizer`
         
         if open_communication:
             self.img_socket = load_socket(img_port)
             self.text_socket = load_socket(text_port)
-
-            self.voxel_map_lock = threading.Lock()  # Create a lock for synchronizing access to `self.voxel_map_localizer`
 
             self.img_thread = threading.Thread(target=self._recv_image)
             self.img_thread.daemon = True
@@ -210,7 +188,6 @@ class ImageProcessor:
         )
         self.space = SparseVoxelMapNavigationSpace(
             self.voxel_map,
-            HelloStretchKinematics(urdf_path = '/data/peiqi/robot-controller/assets/hab_stretch/urdf'),
             # step_size=parameters["step_size"],
             rotation_step_size=parameters["rotation_step_size"],
             dilate_frontier_size=parameters[
@@ -224,8 +201,6 @@ class ImageProcessor:
         self.value_map = torch.zeros(self.voxel_map.grid_size)
 
     def create_vision_model(self):
-        # self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
-        # self.clip_model.eval()
         if not self.siglip:
             self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device)
             self.clip_model.eval()
@@ -244,11 +219,7 @@ class ImageProcessor:
             self.texts = CLASS_LABELS_200
             self.yolo_model.set_classes(self.texts)
         # self.voxel_map_localizer = VoxelMapLocalizer(device = self.device)
-        self.voxel_map_localizer = VoxelMapLocalizer(self.voxel_map, device = self.device, siglip = self.siglip)
-        if self.pcd_path is not None:
-            print('Loading old semantic memory')
-            self.voxel_map_localizer.voxel_pcd = torch.load(self.pcd_path)
-            print('Finish loading old semantic memory')
+        self.voxel_map_localizer = VoxelMapLocalizer(self.voxel_map, clip_model = self.clip_model, processor = self.clip_preprocess, device = self.device, siglip = self.siglip)
 
     def recv_text(self):
         text = self.text_socket.recv_string()
@@ -912,7 +883,7 @@ class ImageProcessor:
                                                                  colors=self.voxel_map_localizer.voxel_pcd._rgb.detach().cpu() / 255., radii=0.03), static = self.static)
             # rr.log("Obstalce_map/2D_obs_map", rr.Image(obs.int() * 127 + exp.int() * 127))
         else:
-            cv2.imwrite(self.log + '/debug_' + str(self.obs_count) + '.jpg', obs.int() * 127 + exp.int() * 127)
+            cv2.imwrite(self.log + '/debug_' + str(self.obs_count) + '.jpg', np.asarray(obs.int() * 127 + exp.int() * 127))
 
     def read_from_pickle(self, pickle_file_name, num_frames: int = -1):
         if isinstance(pickle_file_name, str):

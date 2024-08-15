@@ -250,7 +250,7 @@ class ObjectHandler:
 
         # Removing all points whose depth is zero(undetermined)
         zero_depth_seg_mask = (
-            (flat_x != 0) * (flat_y != 0) * (flat_z != 0) * seg_mask.reshape(-1)
+            (flat_x != 0) * (flat_y != 0) * (flat_z != 0) * (~np.isnan(flat_z)) * seg_mask.reshape(-1)
         )
         flat_x = flat_x[zero_depth_seg_mask]
         flat_y = flat_y[zero_depth_seg_mask]
@@ -350,7 +350,7 @@ class ObjectHandler:
         points_x, points_y, points_z = points[:, :, 0], points[:, :, 1], points[:, :, 2]
 
         # Filtering points based on the distance from camera
-        mask = (points_z > self.cfgs.min_depth) & (points_z < self.cfgs.max_depth)
+        mask = (points_z > self.cfgs.min_depth) & (points_z < self.cfgs.max_depth) & ~np.isnan(points_z)
         points = np.stack([points_x, -points_y, points_z], axis=-1)
         points = points[mask].astype(np.float32)
         colors_m = self.cam.colors[mask].astype(np.float32)

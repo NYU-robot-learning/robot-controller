@@ -40,13 +40,13 @@ parser.add_argument(
     help="Use image transferred from the robot",
 )
 parser.add_argument(
-    "--max_depth", type=float, default=1.8, help="Maximum depth of point cloud"
+    "--max_depth", type=float, default=1.5, help="Maximum depth of point cloud"
 )
 parser.add_argument(
-    "--min_depth", type=float, default=0.0, help="Maximum depth of point cloud"
+    "--min_depth", type=float, default=0.1, help="Maximum depth of point cloud"
 )
 parser.add_argument(
-    "--sampling_rate", type=float, default=0.7, help="Sampling rate of points [<= 1]"
+    "--sampling_rate", type=float, default=0.6, help="Sampling rate of points [<= 1]"
 )
 parser.add_argument("--environment", default="./example_data", help="Environment name")
 cfgs = parser.parse_args()
