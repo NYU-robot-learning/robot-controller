@@ -59,7 +59,7 @@ def main(
     output_filename,
     navigate_home: bool = False,
     show_intermediate_maps: bool = False,
-    explore_iter: int = 10,
+    explore_iter: int = 5,
     re: int = 1,
     input_path: str = None,
     **kwargs,
@@ -108,7 +108,7 @@ def main(
             break
         if mode == 'E':
             robot.switch_to_navigation_mode()
-            for epoch in range(10):
+            for epoch in range(explore_iter):
                 print('\n', 'Exploration epoch ', epoch, '\n')
                 if not demo.run_exploration():
                     print('Exploration failed! Quitting!')

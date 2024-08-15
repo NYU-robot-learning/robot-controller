@@ -211,7 +211,7 @@ class RobotAgentMDP:
                     res[:-2],
                     pos_err_threshold=self.pos_err_threshold,
                     rot_err_threshold=self.rot_err_threshold,
-                    blocking = True
+                    blocking = blocking
                 )
 
                 execution_finish = time.time()

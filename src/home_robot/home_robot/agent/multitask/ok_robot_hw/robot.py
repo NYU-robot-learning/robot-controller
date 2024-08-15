@@ -44,7 +44,7 @@ class HelloRobot:
         # self.robot = StretchClient(urdf_path = stretch_client_urdf_file)
         self.robot = robot
         self.robot.switch_to_manipulation_mode()
-        time.sleep(2)
+        # time.sleep(2)
 
         # Constraining the robots movement
         self.clamp = lambda n, minn, maxn: max(min(maxn, n), minn)
@@ -146,7 +146,7 @@ class HelloRobot:
         if not head_pan is None:
             target_head_pan = head_pan
         self.robot.head.set_pan_tilt(tilt = target_head_tilt, pan = target_head_pan)
-        time.sleep(0.7)
+        #time.sleep(0.7)
 
     def pickup(self, width):
         """
@@ -155,7 +155,7 @@ class HelloRobot:
         """
         next_gripper_pos = width
         while True:
-            self.robot.manip.move_gripper(next_gripper_pos * self.STRETCH_GRIPPER_MAX)
+            self.robot.manip.move_gripper(max(next_gripper_pos * self.STRETCH_GRIPPER_MAX, -0.3))
             curr_gripper_pose = self.robot.manip.get_gripper_position()
             # print('Robot means to move gripper to', next_gripper_pos * self.STRETCH_GRIPPER_MAX)
             # print('Robot actually moves gripper to', curr_gripper_pose)
@@ -222,12 +222,12 @@ class HelloRobot:
             target1 = [0 for _ in range(6)]
             target1[1] = target_state[1] - state[1]
             self.robot.manip.goto_joint_positions(target1, relative=True)
-            time.sleep(1)
+            # time.sleep(1)
 
         # print(f"current state {state}")
         # print(f"target state {target_state}")
-        self.robot.manip.goto_joint_positions(target_state)
-        time.sleep(1)
+        self.robot.manip.goto_joint_positions(target_state, velocities = velocities)
+        # time.sleep(1)
 
         #NOTE: below code is to fix the pitch drift issue in current hello-robot. Remove it if there is no pitch drift issue
         OVERRIDE_STATES['wrist_pitch'] = joints['joint_wrist_pitch']
