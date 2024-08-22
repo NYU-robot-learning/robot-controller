@@ -31,7 +31,7 @@ def encode_image(image_path):
   with open(image_path, "rb") as image_file:
     return base64.b64encode(image_file.read()).decode('utf-8')
 
-def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
+def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None, crops = None):
     # Calculate the number of top values directly
     top_positions = vertices
     # top_values = probability_over_all_points[top_indices].flatten()
@@ -47,6 +47,7 @@ def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
     similarity_max_list = []
     points = []
     obs_max_list = []
+    crops_list = []
     
     for cluster_id in set(labels):
         if cluster_id == -1:  # Ignore noise
@@ -61,6 +62,9 @@ def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
         if obs is not None:
             obs_values = obs[labels == cluster_id]
             obs_max = np.max(obs_values)
+            if crops is not None:
+                target_crops = crops[labels == cluster_id]
+                target_crops = target_crops[np.argmax(obs_values)]
 
         sx = np.max(members[:, 0]) - np.min(members[:, 0])
         sy = np.max(members[:, 1]) - np.min(members[:, 1])
@@ -73,9 +77,14 @@ def find_clusters(vertices: np.ndarray, similarity: np.ndarray, obs = None):
         points.append(members)
         if obs is not None:
             obs_max_list.append(obs_max)
+            if crops is not None:
+                crops_list.append(target_crops)
 
     if obs is not None:
-        return centroids, extends, similarity_max_list, points, obs_max_list
+        if crops is not None:
+            return centroids, extends, similarity_max_list, points, obs_max_list, crops_list
+        else:
+            return centroids, extends, similarity_max_list, points, obs_max_list, None
     else:
         return centroids, extends, similarity_max_list, points
 
@@ -162,7 +171,7 @@ def encode_image(image_path):
     return base64.b64encode(image_file.read()).decode('utf-8')
 
 class VoxelMapLocalizer():
-    def __init__(self, voxel_map_wrapper = None, exist_model = 'owl', clip_model = None, processor = None, device = 'cuda', siglip = True):
+    def __init__(self, voxel_map_wrapper = None, exist_model = 'internvl', clip_model = None, processor = None, device = 'cuda', siglip = True):
         self.voxel_map_wrapper = voxel_map_wrapper
         self.device = device
         # self.clip_model, self.preprocessor = clip.load(model_config, device=device)
@@ -185,7 +194,7 @@ class VoxelMapLocalizer():
             self.exist_model = Owlv2ForObjectDetection.from_pretrained("google/owlv2-base-patch16-ensemble").to(self.device)
         elif exist_model == 'internvl' and torch.cuda.is_available():
             print('WE ARE USING INTERNVL!')
-            path = 'OpenGVLab/InternVL2-2B'
+            path = 'OpenGVLab/InternVL2-4B'
             self.exist_model = AutoModel.from_pretrained(
                 path,
                 torch_dtype=torch.bfloat16,
@@ -205,6 +214,7 @@ class VoxelMapLocalizer():
         rgb: Optional[Tensor],
         weights: Optional[Tensor] = None,
         obs_count: Optional[Tensor] = None,
+        crops: Optional[Tensor] = None
     ):
         points = points.to(self.device)
         if features is not None:
@@ -213,11 +223,14 @@ class VoxelMapLocalizer():
             rgb = rgb.to(self.device)
         if weights is not None:
             weights = weights.to(self.device)
+        if crops is not None:
+            crops = crops.to(self.device)
         self.voxel_pcd.add(points = points, 
                         features = features,
                         rgb = rgb,
                         weights = weights,
-                        obs_count = obs_count)
+                        obs_count = obs_count,
+                        crops = crops)
 
     def calculate_clip_and_st_embeddings_for_queries(self, queries):
         if isinstance(queries, str):
@@ -250,7 +263,6 @@ class VoxelMapLocalizer():
 
     def localize_AonB(self, A, B = None, k_A = 10, k_B = 50):
         print("A is ", A)
-        print("B is ", B)
         if B is None or B == '':
             target = self.find_alignment_for_A([A])[0]
         else:
@@ -273,7 +285,7 @@ class VoxelMapLocalizer():
         return obs_counts[alignments.argmax(dim = -1)].detach().cpu()
 
     def localize_A_v2(self, A, debug = True, return_debug = False):
-        centroids, extends, similarity_max_list, points, obs_max_list, debug_text = self.find_clusters_for_A(A, return_obs_counts = True, debug = debug)
+        centroids, extends, similarity_max_list, points, obs_max_list, crops_list, debug_text = self.find_clusters_for_A(A, return_obs_counts = True, debug = debug)
         if len(centroids) == 0:
             if not debug:
                 return None
@@ -302,7 +314,10 @@ class VoxelMapLocalizer():
                     detection_model_check = self.check_existence_with_owl(A, obs)
                 elif self.existence_checking_model == 'internvl':
                     # print('Checking existence with Internvl')
-                    detection_model_check = self.check_existence_with_internvl(A, obs)
+                    if crops_list:
+                        detection_model_check = self.check_existence_with_internvl(A, obs, crops = crops_list[idx])
+                    else:
+                        detection_model_check = self.check_existence_with_internvl(A, obs, crops = None)
                 elif self.existence_checking_model == 'gpt4o':
                     detection_model_check = self.check_existence_with_gpt(A, obs)
                 else:
@@ -358,15 +373,18 @@ class VoxelMapLocalizer():
         message = response.choices[0].message.content
         return message[:3].lower() == 'yes'
 
-    def check_existence_with_internvl(self, text, obs_id):
+    def check_existence_with_internvl(self, text, obs_id, crops = None):
         if obs_id <= 0:
             return False
         rgb = self.voxel_map_wrapper.observations[obs_id - 1].rgb
         # depth = self.voxel_map_wrapper.observations[obs_id - 1].depth
         # rgb[depth > 3.0] = 0
         rgb = rgb[:, :, [2, 1, 0]]
-        cv2.imwrite('temp.png', rgb.detach().numpy())
-        pixel_values = load_image('temp.png', max_num=6).to(torch.bfloat16).cuda()
+        if crops is not None:
+            tl_x, tl_y, br_x, br_y = crops
+            rgb = rgb[max(tl_y, 0): min(br_y, rgb.shape[0]), max(tl_x, 0): min(br_x, rgb.shape[1])]
+        cv2.imwrite(text + '.png', rgb.detach().numpy())
+        pixel_values = load_image(text + '.png', max_num=6).to(torch.bfloat16).cuda()
 
         generation_config = dict(
             num_beams=1,
@@ -437,8 +455,15 @@ class VoxelMapLocalizer():
         else:
             if return_obs_counts:
                 obs_ids = self.voxel_pcd._obs_counts.detach().cpu().numpy()[mask]
-                centroids, extends, similarity_max_list, points, obs_max_list = find_clusters(points.detach().cpu().numpy(), alignments, obs = obs_ids)
-                output = [centroids, extends, similarity_max_list, points, obs_max_list]
+                if self.voxel_pcd._crops is not None:
+                    crops = self.voxel_pcd._crops.detach().cpu().numpy()[mask]
+                else:
+                    crops = None
+                centroids, extends, similarity_max_list, points, obs_max_list, crops_list = find_clusters(points.detach().cpu().numpy(), alignments, obs = obs_ids, crops = crops)
+                if crops_list:
+                    output = [centroids, extends, similarity_max_list, points, obs_max_list, crops_list]
+                else:
+                    output = [centroids, extends, similarity_max_list, points, obs_max_list, None]
             else:
                 centroids, extends, similarity_max_list, points = find_clusters(points.detach().cpu().numpy(), alignments, obs = None)
                 output = [centroids, extends, similarity_max_list, points]

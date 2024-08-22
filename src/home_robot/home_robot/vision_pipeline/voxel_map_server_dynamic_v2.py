@@ -105,7 +105,7 @@ def get_xyz(depth, pose, intrinsics):
 
 class ImageProcessor:
     def __init__(self,  
-        vision_method = 'mask&*lip', 
+        vision_method = 'detection&mask*lip', 
         siglip = True,
         device = 'cuda',
         min_depth = 0.25,
@@ -133,7 +133,7 @@ class ImageProcessor:
         # There are three vision methods:
         # 1. 'mask*lip' Following the idea of https://arxiv.org/abs/2112.01071, remove the last layer of any VLM and obtain the dense features
         # 2. 'mask&*lip' Following the idea of https://mahis.life/clip-fields/, extract segmentation mask and assign a vision-language feature to it
-        # 3. 'detecion&mask*lip' Combining above two methods, first obtain some bounding boxes, extract dense features of each bounding box
+        # 3. 'detection&mask*lip' Combining above two methods, first obtain some bounding boxes, extract dense features of each bounding box
         self.vision_method = vision_method
         # If cuda is not available, then device will be forced to be cpu
         if not torch.cuda.is_available():
@@ -501,7 +501,7 @@ class ImageProcessor:
         features = features[~mask]
         valid_rgb = rgb.permute(1, 2, 0)[~mask]
         if len(valid_xyz) != 0:
-            self.add_to_voxel_pcd(valid_xyz, features, valid_rgb)
+            self.add_to_voxel_pcd(valid_xyz, features, valid_rgb, crops = None)
 
     def run_owl_sam_clip(self, rgb, mask, world_xyz):
         with torch.no_grad():
@@ -555,14 +555,16 @@ class ImageProcessor:
             features = F.normalize(features, dim = -1).cpu()
 
 
-        for idx, (sam_mask, feature) in enumerate(zip(masks.cpu(), features.cpu())):
+        for idx, (sam_mask, feature, box) in enumerate(zip(masks.cpu(), features.cpu(), bounding_boxes.cpu())):
             valid_mask = torch.logical_and(~mask, sam_mask)
             valid_xyz = world_xyz[valid_mask]
             if valid_xyz.shape[0] == 0:
                 continue
             feature = feature.repeat(valid_xyz.shape[0], 1)
             valid_rgb = rgb.permute(1, 2, 0)[valid_mask]
-            self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb)
+            crops = box.to(feature).to(torch.int).expand(valid_xyz.shape[0], 4)
+            self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb, crops)
+            # self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb)
 
     def extract_per_pixel_features(self, x, image_shape):
         if self.siglip:
@@ -652,9 +654,11 @@ class ImageProcessor:
             # feature = feature[(~mask & sam_mask)[max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])]]
             feature = feature[(~mask)[max(int(tl_y), 0): min(int(br_y), rgb.shape[1]), max(int(tl_x), 0): min(int(br_x), rgb.shape[2])]]
             valid_rgb = rgb.permute(1, 2, 0)[valid_mask]
-            self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb)
+            crops = box.to(feature).to(torch.int).expand(valid_xyz.shape[0], 4)
+            self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb, crops = crops)
+            # self.add_to_voxel_pcd(valid_xyz, feature, valid_rgb)
     
-    def add_to_voxel_pcd(self, valid_xyz, feature, valid_rgb, weights = None, threshold = 0.95):
+    def add_to_voxel_pcd(self, valid_xyz, feature, valid_rgb, weights = None, crops = None, threshold = 0.95):
         # Adding all points to voxelizedPointCloud is useless and expensive, we should exclude threshold of all points
         selected_indices = torch.randperm(len(valid_xyz))[:int((1 - threshold) * len(valid_xyz))]
         if len(selected_indices) == 0:
@@ -672,7 +676,8 @@ class ImageProcessor:
                                     features = feature,
                                     rgb = valid_rgb,
                                     weights = weights,
-                                    obs_count = self.obs_count)
+                                    obs_count = self.obs_count,
+                                    crops = crops)
 
     def load(self, log, number, load_memory = False, texts = None):
         self.voxel_map_localizer.log = log
@@ -715,7 +720,7 @@ class ImageProcessor:
             if not load_memory:
                 if self.vision_method == 'mask&*lip':
                     self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
-                elif self.vision_method == 'detecion&mask*lip':
+                elif self.vision_method == 'detection&mask*lip':
                     self.run_detection_encoder(rgb, ~valid_depth, world_xyz)
                 else:
                     self.run_mask_clip(rgb, ~valid_depth, world_xyz)
@@ -859,7 +864,7 @@ class ImageProcessor:
         
         if self.vision_method == 'mask&*lip':
             self.run_owl_sam_clip(rgb, ~valid_depth, world_xyz)
-        elif self.vision_method == 'detecion&mask*lip':
+        elif self.vision_method == 'detection&mask*lip':
             self.run_detection_encoder(rgb, ~valid_depth, world_xyz)
         else:
             self.run_mask_clip(rgb, ~valid_depth, world_xyz)
