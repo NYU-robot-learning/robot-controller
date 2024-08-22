@@ -388,9 +388,9 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
             print('Target is valid:', target_is_valid)
             if not target_is_valid:
                 continue
-            if np.linalg.norm([selected_x - point[0], selected_y - point[1]]) < 0.35:
+            if np.linalg.norm([selected_x - point[0], selected_y - point[1]]) < 0.4:
                 continue
-            elif np.linalg.norm([selected_x - point[0], selected_y - point[1]]) <= 0.45:
+            elif np.linalg.norm([selected_x - point[0], selected_y - point[1]]) <= 0.5:
                 for i in [-1, 0, 1]:
                     for j in [-1, 0, 1]:
                         if obstacles[selected_target[0] + i][selected_target[1] + j]:
@@ -655,7 +655,7 @@ class SparseVoxelMapNavigationSpaceVoxelDynamic(XYT):
             plt.show()
         return alignment_heuristics
 
-    def _time_heuristic(self, history_soft, outside_frontier, time_smooth = 0.1, time_threshold = 50, debug = False):
+    def _time_heuristic(self, history_soft, outside_frontier, time_smooth = 0.1, time_threshold = 24, debug = False):
         history_soft = np.ma.masked_array(history_soft, ~outside_frontier)
         time_heuristics = history_soft.max() - history_soft
         time_heuristics[history_soft < 0.3] = float('inf')

@@ -110,8 +110,8 @@ class ImageProcessor:
         device = 'cuda',
         min_depth = 0.25,
         max_depth = 2.5,
-        img_port = 5560,
-        text_port = 5561,
+        img_port = 5555,
+        text_port = 5556,
         open_communication = True,
         rerun = True,
         static = True
@@ -266,7 +266,7 @@ class ImageProcessor:
             localized_point = np.array([localized_point[0], localized_point[1], 0])
 
         point = self.sample_navigation(start_pose, localized_point)
-        if mode == 'navigation' and np.min(np.linalg.norm(np.asarray(point)[:2] - np.asarray(pointcloud)[:, :2], axis = -1)) > 0.8:
+        if mode == 'navigation' and np.min(np.linalg.norm(np.asarray(point)[:2] - np.asarray(pointcloud)[:, :2], axis = -1)) > 1.2:
             localized_point = self.sample_frontier(start_pose, None)
             mode = 'exploration'
             point = self.sample_navigation(start_pose, localized_point)
