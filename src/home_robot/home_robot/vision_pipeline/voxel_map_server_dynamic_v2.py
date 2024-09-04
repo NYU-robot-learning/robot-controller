@@ -48,6 +48,9 @@ from PIL import Image
 
 from home_robot.vision_pipeline.communication_util import load_socket, send_array, recv_array, send_rgb_img, recv_rgb_img, send_depth_img, recv_depth_img, send_everything, recv_everything
 
+### LLM-based method in class LLM_ImageProcessor(), supporting method gpt_owl, flash_owl (gemini flash & owl), pro_owl (gemini pro & owl)
+### Need to set system variable OPENAI_API_KEY and GOOGLE_API_KEY
+
 def get_inv_intrinsics(intrinsics):
     # return intrinsics.double().inverse().to(intrinsics)
     fx, fy, ppx, ppy = intrinsics[..., 0, 0], intrinsics[..., 1, 1], intrinsics[..., 0, 2], intrinsics[..., 1, 2]
@@ -1077,12 +1080,14 @@ class LLM_ImageProcessor:
         self.value_map = torch.zeros(self.voxel_map.grid_size)
 
     def create_vision_model(self):
-        if self.vision_method != 'gpt_owl':
-            self.voxel_map_localizer = LLM_VoxelMapLocalizer(self.voxel_map, exist_model = 'owlv2', loc_model = None, device = self.device)
-        else:
+        self.rerun = False
+        if self.vision_method == 'gpt_owl':
             self.voxel_map_localizer = LLM_VoxelMapLocalizer(self.voxel_map, exist_model = 'gpt-4o', loc_model = 'owlv2', device = self.device)
-            self.rerun = False
-
+        elif self.vision_method == 'flash_owl':
+            self.voxel_map_localizer = LLM_VoxelMapLocalizer(self.voxel_map, exist_model = 'gemini-1.5-flash', loc_model = 'owlv2', device = self.device)    
+        elif self.vision_method == 'pro_owl':
+            self.voxel_map_localizer = LLM_VoxelMapLocalizer(self.voxel_map, exist_model = 'gemini-1.5-pro', loc_model = 'owlv2', device = self.device)    
+        
     def recv_text(self):
         text = self.text_socket.recv_string()
         self.text_socket.send_string('Text recevied, waiting for robot pose')
@@ -1303,8 +1308,8 @@ class LLM_ImageProcessor:
             self.voxel_map_localizer.voxel_pcd.clear_points(depth, torch.from_numpy(intrinsics), torch.from_numpy(pose))
             self.voxel_map.voxel_pcd.clear_points(depth, torch.from_numpy(intrinsics), torch.from_numpy(pose))
         
-        if self.vision_method == 'gpt_owl':
-            self.run_gpt_owl(rgb, ~valid_depth, world_xyz)
+        if '_owl' in self.vision_method:
+            self.run_llm_owl(rgb, ~valid_depth, world_xyz)
 
         self.voxel_map.add(
             camera_pose = torch.Tensor(pose), 
@@ -1327,7 +1332,7 @@ class LLM_ImageProcessor:
         else:
             cv2.imwrite(self.log + '/debug_' + str(self.obs_count) + '.jpg', np.asarray(obs.int() * 127 + exp.int() * 127))
 
-    def run_gpt_owl(self, rgb, mask, world_xyz):
+    def run_llm_owl(self, rgb, mask, world_xyz):
         valid_xyz = world_xyz[~mask]
         valid_rgb = rgb.permute(1, 2, 0)[~mask]
         if len(valid_xyz) != 0:

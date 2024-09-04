@@ -27,6 +27,8 @@ from PIL import Image
 from openai import OpenAI
 import base64
 
+### LLM_VoxelMapLocalizer() class support both Gemini & GPT, filtering out images with <=5 voxel points and ingesting the latest 50 
+
 def encode_image(image_path):
   with open(image_path, "rb") as image_file:
     return base64.b64encode(image_file.read()).decode('utf-8')
@@ -454,6 +456,31 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import os
 from home_robot.utils.point_cloud_torch import unproject_masked_depth_to_xyz_coordinates
+import google.generativeai as genai
+genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+generation_config = genai.GenerationConfig(temperature=0)
+safety_settings = [
+    {
+        "category": "HARM_CATEGORY_DANGEROUS",
+        "threshold": "BLOCK_NONE",
+    },
+    {
+        "category": "HARM_CATEGORY_HARASSMENT",
+        "threshold": "BLOCK_NONE",
+    },
+    {
+        "category": "HARM_CATEGORY_HATE_SPEECH",
+        "threshold": "BLOCK_NONE",
+    },
+    {
+        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "threshold": "BLOCK_NONE",
+    },
+    {
+        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+        "threshold": "BLOCK_NONE",
+    },
+]
 class LLM_VoxelMapLocalizer():
     def __init__(self, voxel_map_wrapper = None, exist_model = 'gpt-4o', loc_model = 'owlv2', device = 'cuda'):
         self.voxel_map_wrapper = voxel_map_wrapper
@@ -464,6 +491,11 @@ class LLM_VoxelMapLocalizer():
         if exist_model == 'gpt-4o':
             print('WE ARE USING OPENAI GPT4o')
             self.gpt_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        elif exist_model == 'gemini-1.5-pro':
+            print('WE ARE USING GEMINI 1.5 PRO')
+            
+        elif exist_model == 'gemini-1.5-flash':
+            print('WE ARE USING GEMINI 1.5 FLASH')
         else:
             print('YOU ARE USING NOTHING!')
         self.location_checking_model = loc_model
@@ -523,7 +555,7 @@ class LLM_VoxelMapLocalizer():
                 return centroid, debug_text, i, masked_xyz
         debug_text = '#### - All instances are not the target! Maybe target object has not been observed yet. **😭**\n'
         return None, debug_text, None, None
-
+    
     def process_chunk(self, chunk, sys_prompt, user_prompt):
         for i in range(10):
             try:
@@ -540,40 +572,63 @@ class LLM_VoxelMapLocalizer():
                 if 'None' in timestamps:
                     return None
                 else:
-                    return list(map(int, timestamps.split(', ')))
+                    return list(map(int, timestamps.replace(' ', '').split(':')[1].split(',')))
             except Exception as e:
                 print(f"Error: {e}")
                 time.sleep(15)
         return "Execution Failed"
 
-    def llm_locator(self, A, encoded_image, context_length = 30):
+    def gemini_chunk(self, chunk, sys_prompt, user_prompt):
+        if self.existence_checking_model == 'gemini-1.5-pro':
+            model_name="models/gemini-1.5-pro-exp-0827"
+        elif self.existence_checking_model == 'gemini-1.5-flash':
+            model_name="models/gemini-1.5-flash-exp-0827"
+
+        for i in range(3):
+            try:
+                model = genai.GenerativeModel(model_name=model_name, system_instruction=sys_prompt)
+                timestamps = model.generate_content(chunk + [user_prompt], generation_config=generation_config, safety_settings=safety_settings).text
+                timestamps = timestamps.split('\n')[0]
+                if 'None' in timestamps:
+                    return None
+                else:
+                    return list(map(int, timestamps.replace(' ', '').split(':')[1].split(',')))
+            except Exception as e:
+                print(f"Error: {e}")
+                time.sleep(30)
+        return "Execution Failed"
+
+
+
+    def llm_locator(self, A, encoded_image, process_chunk, context_length = 30):
         timestamps_lst = []
 
         sys_prompt = f"""
-        You need to find all the timestamp that the object exist in the image in plain text, without any unnecessary explanation or space. If the object never exist, please directly output None.
+        For each object query provided, list at most 10 timestamps that the object is most clearly shown. If the object does not appear, simply output the object name and the word "None" for the timestamp. Avoid any unnecessary explanations or additional formatting.
         
-        Example 1:
+        Example:
         Input:
-        bottle
+        cat
 
         Output: 
-        1, 4, 6, 9
+        cat: 1,4,6,9
 
-        Example 2:
-        Input: desk
+        Input: 
+        car
 
-        Output: 
-        None
+        Output:
+        car: None
         """
 
         user_prompt = f"""The object you need to find is {A}"""
-        
-        content = [item for sublist in list(encoded_image.values()) for item in sublist[:2]]
+        if 'gpt' in self.existence_checking_model:
+            content = [item for sublist in list(encoded_image.values()) for item in sublist[:2]][-100:]
+        elif 'gemini' in self.existence_checking_model:
+            content = [item for sublist in list(encoded_image.values()) for item in sublist[0]][-100:]
         content_chunks = [content[i:i + 2 * context_length] for i in range(0, len(content), 2 * context_length)]
-        chunk_num = len(content_chunks)
         
         with ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_chunk = {executor.submit(self.process_chunk, chunk, sys_prompt, user_prompt): chunk for chunk in content_chunks}
+            future_to_chunk = {executor.submit(process_chunk, chunk, sys_prompt, user_prompt): chunk for chunk in content_chunks}
             
             for future in as_completed(future_to_chunk):
                 chunk = future_to_chunk[future]
@@ -583,16 +638,27 @@ class LLM_VoxelMapLocalizer():
                         timestamps_lst.extend(result)    
                 except Exception as e:
                     print(f"Exception occurred: {e}")
-        
+        print(A, timestamps_lst)
         return self.owl_locater(A, encoded_image, timestamps_lst)
 
-    def localize_A_v2(self, A, debug = True, return_debug = False, count_threshold = 3):
+    def localize_A_v2(self, A, debug = True, return_debug = False, count_threshold = 5):
         encoded_image = {}
 
         counts = torch.bincount(self.voxel_map_wrapper.voxel_pcd._obs_counts)
         cur_obs = max(self.voxel_map_wrapper.voxel_pcd._obs_counts)
         filtered_obs = (counts > count_threshold).nonzero(as_tuple=True)[0].tolist()
-        filtered_obs = set(filtered_obs + [i for i in range(cur_obs-10, cur_obs+1)])
+        # filtered_obs = sorted(set(filtered_obs + [i for i in range(cur_obs-10, cur_obs+1)]))
+        filtered_obs = sorted(filtered_obs)
+
+        # filtered_obs = (counts <= count_threshold).nonzero(as_tuple=True)[0].tolist()
+        # filtered_obs = [obs for obs in filtered_obs if (cur_obs - obs) >= 10]
+
+        if 'gemini' in self.existence_checking_model:
+            process_chunk = self.gemini_chunk
+            context_length = 100
+        elif 'gpt' in self.existence_checking_model:
+            process_chunk = self.gpt_chunk
+            context_length = 30
 
         for obs_id in filtered_obs: 
             rgb = self.voxel_map_wrapper.observations[obs_id - 1].rgb.numpy()
@@ -608,15 +674,18 @@ class LLM_VoxelMapLocalizer():
             depth = depth.numpy()
             rgb[depth > 2.5] = [0, 0, 0]
             image = Image.fromarray(rgb.astype(np.uint8), mode='RGB')
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_bytes = buffered.getvalue()
-            base64_encoded = base64.b64encode(img_bytes).decode('utf-8')
-            encoded_image[obs_id] = [{"type": "text", "text": f"Following is the image took on timestep {obs_id}"},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:image/png;base64,{base64_encoded}"}
-                }, {'image':image, 'xyz':full_world_xyz, 'depth':depth}]
-        target_point, debug_text, obs, point = self.llm_locator(A, encoded_image, context_length = 30)
+            if 'gemini' in self.existence_checking_model:
+                encoded_image[obs_id] = [[f"Following is the image took on timestep {obs_id}: ", image], {'image':image, 'xyz':full_world_xyz, 'depth':depth}]
+            elif 'gpt' in self.existence_checking_model:
+                buffered = BytesIO()
+                image.save(buffered, format="PNG")
+                img_bytes = buffered.getvalue()
+                base64_encoded = base64.b64encode(img_bytes).decode('utf-8')
+                encoded_image[obs_id] = [{"type": "text", "text": f"Following is the image took on timestep {obs_id}"},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:image/png;base64,{base64_encoded}"}
+                    }, {'image':image, 'xyz':full_world_xyz, 'depth':depth}]
+        target_point, debug_text, obs, point = self.llm_locator(A, encoded_image, process_chunk, context_length)
         if not debug:
             return target_point
         elif not return_debug:
