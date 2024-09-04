@@ -527,7 +527,7 @@ class LLM_VoxelMapLocalizer():
                         obs_count = obs_count)
 
     def owl_locater(self, A, encoded_image, timestamps_lst):
-        for i in sorted(timestamps_lst, reverse=True):
+        for i in timestamps_lst:
             image_info = encoded_image[i][-1]
             image = image_info['image']
             box = None
@@ -556,7 +556,7 @@ class LLM_VoxelMapLocalizer():
         debug_text = '#### - All instances are not the target! Maybe target object has not been observed yet. **😭**\n'
         return None, debug_text, None, None
     
-    def process_chunk(self, chunk, sys_prompt, user_prompt):
+    def gpt_chunk(self, chunk, sys_prompt, user_prompt):
         for i in range(10):
             try:
                 response = self.gpt_client.chat.completions.create(
@@ -622,12 +622,12 @@ class LLM_VoxelMapLocalizer():
 
         user_prompt = f"""The object you need to find is {A}"""
         if 'gpt' in self.existence_checking_model:
-            content = [item for sublist in list(encoded_image.values()) for item in sublist[:2]][-100:]
+            content = [item for sublist in list(encoded_image.values()) for item in sublist[:2]][-100:] # adjust to [-60:] for taking only the last 30 and have faster speed
         elif 'gemini' in self.existence_checking_model:
             content = [item for sublist in list(encoded_image.values()) for item in sublist[0]][-100:]
         content_chunks = [content[i:i + 2 * context_length] for i in range(0, len(content), 2 * context_length)]
         
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             future_to_chunk = {executor.submit(process_chunk, chunk, sys_prompt, user_prompt): chunk for chunk in content_chunks}
             
             for future in as_completed(future_to_chunk):
@@ -638,7 +638,8 @@ class LLM_VoxelMapLocalizer():
                         timestamps_lst.extend(result)    
                 except Exception as e:
                     print(f"Exception occurred: {e}")
-        print(A, timestamps_lst)
+        timestamps_lst = sorted(timestamps_lst, reverse=True)
+        # print(A, timestamps_lst)
         return self.owl_locater(A, encoded_image, timestamps_lst)
 
     def localize_A_v2(self, A, debug = True, return_debug = False, count_threshold = 5):
