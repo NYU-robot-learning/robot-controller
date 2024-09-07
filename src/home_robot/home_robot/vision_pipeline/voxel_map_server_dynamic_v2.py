@@ -983,7 +983,7 @@ class ImageProcessor:
         with open(filename, "wb") as f:
             pickle.dump(data, f)
 
-from home_robot.vision_pipeline.voxel_map_localizer_v2 import LLM_VoxelMapLocalizer
+from home_robot.vision_pipeline.voxel_map_localizer_v2 import LLM_Localizer
 class LLM_ImageProcessor:
     def __init__(self,  
         vision_method = 'gpt_owl', 
@@ -1082,11 +1082,11 @@ class LLM_ImageProcessor:
     def create_vision_model(self):
         self.rerun = False
         if self.vision_method == 'gpt_owl':
-            self.voxel_map_localizer = LLM_VoxelMapLocalizer(self.voxel_map, exist_model = 'gpt-4o', loc_model = 'owlv2', device = self.device)
+            self.voxel_map_localizer = LLM_Localizer(self.voxel_map, exist_model = 'gpt-4o', loc_model = 'owlv2', device = self.device)
         elif self.vision_method == 'flash_owl':
-            self.voxel_map_localizer = LLM_VoxelMapLocalizer(self.voxel_map, exist_model = 'gemini-1.5-flash', loc_model = 'owlv2', device = self.device)    
+            self.voxel_map_localizer = LLM_Localizer(self.voxel_map, exist_model = 'gemini-1.5-flash', loc_model = 'owlv2', device = self.device)    
         elif self.vision_method == 'pro_owl':
-            self.voxel_map_localizer = LLM_VoxelMapLocalizer(self.voxel_map, exist_model = 'gemini-1.5-pro', loc_model = 'owlv2', device = self.device)    
+            self.voxel_map_localizer = LLM_Localizer(self.voxel_map, exist_model = 'gemini-1.5-pro', loc_model = 'owlv2', device = self.device)    
         
     def recv_text(self):
         text = self.text_socket.recv_string()

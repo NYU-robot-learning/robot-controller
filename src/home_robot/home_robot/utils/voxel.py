@@ -154,9 +154,9 @@ class VoxelizedPointcloud:
                         xys[:, 0] < 0, xys[:, 0] >= H, 
                         xys[:, 1] < 0, xys[:, 1] >= W, 
                         # the points are projected to the image frame but is blocked by some obstacles
-                        depth[valid_xys[:, 0], valid_xys[:, 1]] < (proj_depth - 0.1), 
+                        depth[valid_xys[:, 0].long(), valid_xys[:, 1].long()] < (proj_depth - 0.1), 
                         # the points are projected to the image frame but they are behind camera
-                        depth[valid_xys[:, 0], valid_xys[:, 1]] < 0.01,
+                        depth[valid_xys[:, 0].long(), valid_xys[:, 1].long()] < 0.01,
                         proj_depth < 0.01,
                         # depth is too large
                         # (~depth_is_valid)[valid_xys[:, 0], valid_xys[:, 1]],
@@ -166,11 +166,13 @@ class VoxelizedPointcloud:
                 ),
                 dim = 0)
 
-            # if self._entity_ids is not None:
-            #     removed_entities, removed_counts = torch.unique(self._entity_ids.detach().cpu()[~indices], return_counts = True)
-            #     total_counts = torch.bincount(self._entity_ids.detach().cpu())
-            #     entities_to_be_removed = removed_entities[(removed_counts > total_counts[removed_entities] * 0.75) | (total_counts[removed_entities] - removed_counts < 5)]
-            #     indices = indices & ~torch.isin(self._entity_ids.detach().cpu(), entities_to_be_removed)
+            # if self._obs_counts is not None:
+            #     indices = indices.to(torch.bool)
+            #     removed_entities, removed_counts = torch.unique(self._obs_counts.detach().cpu()[~indices].to(torch.long), return_counts = True)
+            #     total_counts = torch.bincount(self._obs_counts.detach().cpu())
+            #     entities_to_be_removed = removed_entities[((removed_counts > total_counts[removed_entities] * 0.75) | (total_counts[removed_entities] - removed_counts < 5))]
+            #     entities_to_be_removed = entities_to_be_removed.to(torch.long)
+            #     indices = indices & ~torch.isin(self._obs_counts.detach().cpu(), entities_to_be_removed)
         
             # print('Clearing non valid points...')
             # print('Removing ' + str((~indices).sum().item()) + ' points.')
@@ -187,23 +189,23 @@ class VoxelizedPointcloud:
             if self._entity_ids is not None:
                 self._entity_ids = self._entity_ids[indices]
 
-            # if self._entity_ids is not None:
-            #     dbscan = DBSCAN(eps=self.voxel_size * 4, min_samples=5)
-            #     cluster_vertices = torch.cat((self._points.detach().cpu(), self._entity_ids.detach().cpu().reshape(-1,1) * 1000), -1).numpy()
-            #     clusters = dbscan.fit(cluster_vertices)
-            #     labels = clusters.labels_
-            #     indices = labels != -1
-            #     self._points = self._points[indices]
-            #     if self._features is not None:
-            #         self._features = self._features[indices]
-            #     if self._weights is not None:
-            #         self._weights= self._weights[indices]
-            #     if self._rgb is not None:
-            #         self._rgb = self._rgb[indices]
-            #     if self._obs_counts is not None:
-            #         self._obs_counts = self._obs_counts[indices]
-            #     if self._entity_ids is not None:
-            #         self._entity_ids = self._entity_ids[indices]
+            if self._entity_ids is not None:
+                dbscan = DBSCAN(eps=self.voxel_size * 4, min_samples=20)
+                cluster_vertices = torch.cat((self._points.detach().cpu(), self._entity_ids.detach().cpu().reshape(-1,1) * 1000), -1).numpy()
+                clusters = dbscan.fit(cluster_vertices)
+                labels = clusters.labels_
+                indices = labels != -1
+                self._points = self._points[indices]
+                if self._features is not None:
+                    self._features = self._features[indices]
+                if self._weights is not None:
+                    self._weights= self._weights[indices]
+                if self._rgb is not None:
+                    self._rgb = self._rgb[indices]
+                if self._obs_counts is not None:
+                    self._obs_counts = self._obs_counts[indices]
+                if self._entity_ids is not None:
+                    self._entity_ids = self._entity_ids[indices]
 
     def add(
         self,
