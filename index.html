@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Object Identification</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #0e0e0e;
+            font-family: 'Open Sans', sans-serif;
+            color: #fffacd;
+            transition: filter 0.5s ease, transform 0.5s ease;
+        }
+
+        .modal-header, .modal-body, .modal-footer {
+            color: #fffacd;
+            background-color: #1a1a1a;
+        }
+
+        .modal-header h5 {
+            color: #ffecb3;
+            font-size: 1.75rem;
+            letter-spacing: 2px;
+        }
+
+        .modal-content {
+            background: radial-gradient(circle at center, #1a1a1a, #0e0e0e);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(255, 235, 59, 0.3);
+            animation: zoomIn 1s ease forwards;
+        }
+
+        @keyframes zoomIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .form-label {
+            font-size: 1rem;
+            letter-spacing: 1px;
+        }
+
+        .form-control {
+            background-color: #2e2e2e;
+            color: #ffecb3;
+            border: 2px solid #ffecb3;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: #ffecb3;
+            box-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
+        }
+
+        .form-control.is-invalid {
+            border-color: #ff4d4d;
+            box-shadow: 0 0 10px rgba(255, 77, 77, 0.5);
+        }
+
+        .form-control.is-valid {
+            border-color: #00cc66;
+            box-shadow: 0 0 10px rgba(0, 204, 102, 0.5);
+        }
+
+        .btn-primary {
+            background-color: rgba(91, 88, 53, 0.078);
+            color: #c7b425;
+            border: none;
+            border-radius: 5px;
+            padding: 12px 20px;
+            font-size: 1rem;
+            width: 100%;
+            text-align: center;
+            overflow: hidden;
+            position: relative;
+            transition: color 0.3s ease, transform 0.3s ease;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 140%;
+            height: 140%;
+            background: radial-gradient(circle at center, rgba(255, 255, 153, 0.6), rgba(255, 223, 0, 0) 70%);
+            filter: blur(20px);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0.5);
+            transition: transform 0.5s ease-in-out, opacity 0.3s ease-in-out;
+            z-index: -2;
+        }
+
+        .btn-primary::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 160%;
+            height: 160%;
+            background: radial-gradient(circle at center, rgba(255, 223, 153, 0.4), rgba(255, 255, 0, 0) 80%);
+            filter: blur(40px);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0.7);
+            transition: transform 0.5s ease-in-out, opacity 0.3s ease-in-out;
+            z-index: -3;
+        }
+
+        .btn-primary:hover {
+            background-color: rgba(255, 255, 153, 0.6);
+            color: #8a6d1a;
+            transform: scale(1.05);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .btn-primary:hover::before {
+            transform: translate(-50%, -50%) scale(1.2);
+            opacity: 1;
+        }
+
+        .btn-primary:hover::after {
+            transform: translate(-50%, -50%) scale(1.4);
+            opacity: 1;
+            animation: colorShift 1.5s infinite alternate;
+        }
+
+        @keyframes colorShift {
+            0% {
+                background: radial-gradient(circle at center, rgba(255, 223, 153, 0.4), rgba(255, 255, 0, 0) 80%);
+            }
+            50% {
+                background: radial-gradient(circle at center, rgba(173, 216, 230, 0.4), rgba(135, 206, 250, 0) 80%);
+            }
+            100% {
+                background: radial-gradient(circle at center, rgba(173, 216, 230, 0.4), rgba(255, 255, 0, 0) 80%);
+            }
+        }
+
+        .modal.fade .modal-dialog {
+            transition: transform 0.3s ease-out;
+            transform: translateY(-100px);
+        }
+
+        .modal.show .modal-dialog {
+            transform: translateY(0);
+        }
+
+        .loading-screen, .main-interface {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle, #1a1a1a, #0e0e0e);
+        }
+
+        .loading-screen.active, .main-interface.active {
+            display: flex;
+        }
+
+        .loading-screen h1 {
+            font-size: 3rem;
+            letter-spacing: 5px;
+            text-align: center;
+            animation: zoomInOut 3s ease-in-out infinite;
+            color: #ffecb3;
+        }
+
+        @keyframes zoomInOut {
+            0% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.5; }
+        }
+
+        .interface {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .query-container {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            text-align: center;
+            pointer-events: all;
+            animation: glowText 3s ease-in-out infinite alternate;
+            color: #fff9c4;
+        }
+
+        @keyframes glowText {
+            0% { 
+                text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+            }
+            100% { 
+                text-shadow: 
+                    0 0 10px rgba(255, 235, 59, 0.3),
+                    0 0 15px rgba(255, 235, 59, 0.4), 
+                    0 0 20px rgba(255, 235, 59, 0.4), 
+                    0 0 25px rgba(255, 235, 59, 0.5);
+            }
+        }
+
+        #timer {
+            display: none;
+        }
+
+        #content-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+            pointer-events: all;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        #progress-counter {
+            display: block;
+            font-size: 1rem;
+            color: #fffacd;
+            margin-top: 5px;
+        }
+
+        #image-grid-container {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 10px;
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 10px 0;
+            transition: filter 0.3s ease-in-out;
+        }
+
+        .grid-image-wrapper {
+            position: relative;
+            width: 100%;
+            padding-bottom: 100%;
+            overflow: hidden;
+            transition: transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1), 
+                        box-shadow 0.4s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        z-index 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+
+        .grid-image-wrapper.enlarged {
+            transform: scale(3.5);
+            box-shadow: 0 50px 100px rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            position: relative;
+        }
+
+        .grid-image-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            border-radius: 10px;
+        }
+
+        .grid-image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: filter 0.1s ease;
+            border-radius: 10px;
+        }
+
+        .blurred {
+            filter: blur(7px);
+            transition: filter 0.1s ease 0.1s;
+        }
+
+        .grid-image-wrapper img,
+        .grid-image-wrapper .serial-number-badge {
+            transition: filter 0.3s ease-out;
+        }
+
+        .grid-image-wrapper img.blurred,
+        .grid-image-wrapper .serial-number-badge.blurred {
+            filter: blur(7px);
+        }
+
+        .grid-image-wrapper img.remove-blur,
+        .grid-image-wrapper .serial-number-badge.remove-blur {
+            transition: filter 0.1s ease-in;
+            filter: none;
+        }
+
+        .serial-number-badge {
+            position: absolute;
+            bottom: 5px;
+            right: 5px;
+            background-color: red;
+            color: white;
+            border-radius: 50%;
+            width: 12.75px;
+            height: 12.75px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+        }
+
+        .marker {
+            position: absolute;
+            width: 5px;
+            height: 5px;
+            background-color: #d80e0e;
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            z-index: 11;
+            border: 2px solid yellow;
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 5px;
+        }
+
+        #coordinates-container-left, #coordinates-container-right {
+            font-size: 0.7rem;
+            white-space: nowrap;
+            padding: 5px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
+            color: #eedb2b;
+            line-height: 0.8;
+            width: 150px;
+            flex-shrink: 0;
+            text-align: center;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #coordinates-container-left h3, #coordinates-container-right h3 {
+            font-size: 0.8rem;
+            margin: 0 0 10px 0;
+        }
+
+        #select-button, #skip-button, #pause-button {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Open Sans', sans-serif;
+            cursor: pointer;
+            background: rgba(91, 88, 53, 0.078);
+            padding: 14px 20px;
+            border: none;
+            border-radius: 5px;
+            color: #c7b425;
+            font-size: 0.8rem;
+            width: 200px;
+            height: 37.5px;
+            text-align: center;
+            pointer-events: all;
+            position: relative;
+            z-index: 100;
+            overflow: hidden;
+            transition: color 0.3s ease-in-out;
+            margin: 0;
+        }
+
+        #loading-bar-container {
+            width: 80%;
+            background-color: #2b2b2b;
+            border-radius: 5px;
+            height: 20px;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #loading-bar {
+            width: 0%;
+            background-color: #ffecb3;
+            height: 100%;
+            transition: width 0.5s ease-in-out;
+        }
+
+        #select-button::before, #skip-button::before, #pause-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 140%;
+            height: 140%;
+            background: radial-gradient(circle at center, rgba(255, 255, 153, 0.6), rgba(255, 223, 0, 0) 70%);
+            filter: blur(20px);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0.5);
+            transition: transform 0.5s ease-in-out, opacity 0.3s ease-in-out;
+            z-index: -2;
+        }
+
+        #select-button::after, #skip-button::after, #pause-button::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 160%;
+            height: 160%;
+            background: radial-gradient(circle at center, rgba(255, 223, 153, 0.4), rgba(255, 255, 0, 0) 80%);
+            filter: blur(40px);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0.7);
+            transition: transform 0.5s ease-in-out, opacity 0.3s ease-in-out;
+            z-index: -3;
+        }
+
+        #select-button:hover, #skip-button:hover, #pause-button:hover {
+            color: #ffff66;
+        }
+
+        #select-button:hover::before, #skip-button:hover::before, #pause-button:hover::before {
+            transform: translate(-50%, -50%) scale(1.2);
+            opacity: 1;
+        }
+
+        #select-button:hover::after, #skip-button:hover::after, #pause-button:hover::after {
+            transform: translate(-50%, -50%) scale(1.4);
+            opacity: 1;
+            animation: colorShift 1.5s infinite alternate;
+        }
+
+        #select-button:hover, #skip-button:hover, #pause-button:hover {
+            background: rgba(255, 255, 255, 0.4);
+            transform: translateY(-5px) scale(1.1);
+            color: #fff9c4;
+        }
+
+        .arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            user-select: none;
+            z-index: 3;
+            background: none;
+            border: none;
+            outline: none;
+            transition: transform 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55), filter 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+
+        .arrow::before,
+        .arrow::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border: solid transparent;
+        }
+
+        #left-arrow {
+            left: 20px;
+        }
+
+        #left-arrow::before {
+            left: 0;
+            border-width: 20px 30px 20px 0;
+            border-right-color: #c8c181;
+        }
+
+        #left-arrow::after {
+            left: 20px;
+            border-width: 16px 24px 16px 0;
+            border-right-color: #a79d6c;
+            filter: brightness(0.8);
+        }
+
+        #right-arrow {
+            right: 20px;
+        }
+
+        #right-arrow::before {
+            right: 0;
+            border-width: 20px 0 20px 30px;
+            border-left-color: #c8c181;
+        }
+
+        #right-arrow::after {
+            right: 20px;
+            border-width: 16px 0 16px 24px;
+            border-left-color: #a79d6c;
+            filter: brightness(0.8);
+        }
+
+        .arrow:hover {
+            transform: scale(1.2) rotate(5deg);
+            filter: drop-shadow(0 0 15px rgba(200, 193, 129, 0.8));
+        }
+
+        .arrow:hover::before,
+        .arrow:hover::after {
+            animation: pulse 0.8s infinite alternate;
+            filter: brightness(1.5);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+            100% {
+                transform: scale(1.3);
+                filter: brightness(1.8);
+            }
+        }
+
+        .env-info-overlay {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 10px;
+            color: #ffecb3;
+            text-align: center;
+            font-size: 1.5rem;
+            z-index: 1000;
+        }
+
+        .env-info-overlay.active {
+            display: block;
+        }
+
+
+    </style>
+</head>
+<body>
+
+    <div class="modal fade" id="userInfoModal" tabindex="-1" aria-labelledby="userInfoModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="userInfoModalLabel">Enter Your Information</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="user-info-form">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username (no spaces)</label>
+                            <input type="text" class="form-control" id="username" required>
+                            <div class="invalid-feedback">Username cannot contain spaces.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email address</label>
+                            <input type="email" class="form-control" id="email" required>
+                            <div class="invalid-feedback">Please enter a valid email address.</div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Submit</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-screen active">
+        <h1>Loading the Environments...</h1>
+    </div>
+
+    <div id="env-info" class="env-info-overlay">
+        <h2 id="env-text"></h2>
+        <p id="queries-info"></p>
+    </div>
+
+    <div class="interface">
+        <div id="timer">Time: 0.00s</div>
+        <div class="query-container">
+            <span id="query-text"></span>
+            <div id="progress-counter"></div>
+        </div>        
+        <div id="content-container">
+            <div id="left-arrow" class="arrow"></div>
+            <div id="right-arrow" class="arrow"></div>
+            <div id="image-grid-container"></div>
+        </div>
+    
+        <div class="button-container">
+            <button id="skip-button" disabled>Not Found</button>
+            <button id="select-button" disabled>Select Object</button>
+            <button id="pause-button">Report</button>
+        </div>
+
+        <div class="modal fade" id="pauseModal" tabindex="-1" aria-labelledby="pauseModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="pauseModalLabel">What's up?</h5>
+                    </div>
+                    <div class="modal-body">
+                        <form id="pause-form">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="pauseReason" id="notFound" value="Not found" required>
+                                <label class="form-check-label" for="notFound">Not found</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="pauseReason" id="impossible" value="Impossible" required>
+                                <label class="form-check-label" for="impossible">Impossible</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="pauseReason" id="notUnderstood" value="Didn't understand" required>
+                                <label class="form-check-label" for="notUnderstood">Didn't understand</label>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" id="pauseContinue" class="btn btn-primary">Continue</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading-bar-container">
+            <div id="loading-bar"></div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        let query = '';
+        let userInfoSubmitted = false;
+        let selectedPoints = [];
+        let pointSelected = false;
+        let environmentNumber = 1;
+        let timeStep = null;
+        let currentPage = 0;
+        let timerInterval;
+        let startTime;
+        let hoverTimeout;
+        let isPaused = false;
+        let savedElapsedTime;
+
+        const totalEnvironments = 9;
+        const totalTimeStepsPerEnv = [3, 3, 4, 3, 3, 3, 3, 3, 3];
+        let currentEnvironmentIndex = 0;
+        let currentTimeStepIndex = 0;
+        let totalProgressSteps = totalTimeStepsPerEnv.reduce((a, b) => a + b, 0);
+        let currentProgressStep = 0;
+
+        function loadNextEnvAndTimeStep() {
+            if (!userInfoSubmitted) return;
+            $.getJSON('/next_env_time_step', function(data) {
+                if (data.status === "finished") {
+                    showGameOverMessage();
+                } else if (data.status === "success") {
+                    const { env_number, time_step, total_queries } = data;
+                    environmentNumber = env_number;
+                    timeStep = time_step;
+                    $('#env-text').text(`Environment ${env_number}, Time Step ${time_step}`);
+                    $('#queries-info').text(`Total Queries: ${total_queries}`);
+                    $('#env-info').addClass('active');
+                    currentProgressStep++;
+                    updateLoadingBar();
+                    setTimeout(() => {
+                        $('#env-info').removeClass('active');
+                        loadNextQuery();
+                        fetchImageSet(0).then(loadImages);
+                    }, 2500);
+                }
+            });
+        }
+
+        function showGameOverMessage() {
+            const gameOverMessage = $('<div class="game-over-overlay"></div>');
+            gameOverMessage.css({
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                background: 'rgba(0, 0, 0, 0.8)',
+                color: '#ffecb3',
+                fontSize: '3rem',
+                textAlign: 'center',
+                padding: '50px',
+                borderRadius: '10px',
+                zIndex: '10000',
+            });
+            gameOverMessage.text('Game Over');
+            $('body').append(gameOverMessage);
+        }
+
+        function updateLoadingBar() {
+            const progressPercentage = (currentProgressStep / totalProgressSteps) * 100;
+            $('#loading-bar').css('width', `${progressPercentage}%`);
+            if (progressPercentage === 100) {
+                showGameOverMessage();
+            }
+        }
+
+        function startTimer() {
+            if (!userInfoSubmitted) return;
+            startTime = Date.now();
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+                $('#timer').text(`Time: ${elapsed}s`);
+            }, 100);
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            $('#timer').text('Time: 0.00s');
+        }
+
+        function loadNextQuery() {
+            $.getJSON('/get_next_query', function(data) {
+                if (data.finished) {
+                    loadNextEnvAndTimeStep();
+                } else {
+                    query = data.query;
+                    $('#query-text').text(query);
+                    $('#progress-counter').text(`${data.completed} / ${data.remaining}`);
+                    resetTimer();
+                    startTimer();
+                    $('#skip-button').prop('disabled', false);
+                }
+            });
+        }
+
+        function fetchImageSet(pageNumber) {
+            return $.ajax({
+                type: "POST",
+                url: "/get_images",
+                contentType: "application/json",
+                data: JSON.stringify({ page_number: pageNumber }),
+            }).then(data => {
+                return data.images;
+            });
+        }
+
+        function loadImages(images) {
+            const imageGridContainer = $('#image-grid-container');
+            imageGridContainer.empty();
+            images.forEach((imageData, index) => {
+                const imageIndex = imageData.index;
+                const imageSrc = 'data:image/jpeg;base64,' + imageData.image;
+                const serialNumber = (currentPage * 24) + index + 1;
+                const imageHTML = `
+                    <div class="grid-image-wrapper">
+                        <div class="grid-image-container">
+                            <img src="${imageSrc}" data-index="${imageIndex}">
+                            <div class="serial-number-badge">${serialNumber}</div>
+                        </div>
+                    </div>
+                `;
+                imageGridContainer.append(imageHTML);
+            });
+            imageGridContainer.find('img').each(function() {
+                $(this).on('click', function(event) {
+                    const imageIndex = $(this).data('index');
+                    const relativeX = event.offsetX / $(this).width();
+                    const relativeY = event.offsetY / $(this).height();
+                    selectedPoints.push({ x: relativeX, y: relativeY, image_index: imageIndex });
+                    placeMarker($(this).closest('.grid-image-wrapper'), relativeX, relativeY);
+                    pointSelected = true;
+                    $('#select-button').prop('disabled', false);
+                });
+            });
+            selectedPoints.forEach(point => {
+                const selectedImage = imageGridContainer.find(`img[data-index="${point.image_index}"]`);
+                placeMarker(selectedImage.closest('.grid-image-wrapper'), point.x, point.y);
+            });
+        }
+
+        function placeMarker(wrapperContainer, relativeX, relativeY) {
+            wrapperContainer.find('.marker').remove();
+            let marker = $('<div class="marker"></div>');
+            wrapperContainer.append(marker);
+            marker.css({
+                left: `${relativeX * 100}%`,
+                top: `${relativeY * 100}%`,
+            });
+        }
+
+        function saveSelectedPoints() {
+            if (!pointSelected) {
+                alert("Please select a point before saving.");
+                return;
+            }
+            $.ajax({
+                type: "POST",
+                url: "/save_points",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    username: storedUsername,
+                    env_number: environmentNumber,
+                    time_step: timeStep,
+                    query: query,
+                    points: selectedPoints,
+                    elapsed_time: (Date.now() - startTime) / 1000
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        const coordinatesContainerLeft = $('#coordinates-container-left');
+                        const coordinatesContainerRight = $('#coordinates-container-right');
+                        coordinatesContainerLeft.empty();
+                        const titleLeft = $('<h3></h3>').text('Manual Selection');
+                        coordinatesContainerLeft.append(titleLeft);
+                        response.xyz_coordinates.forEach(coord => {
+                            const coordText = coord['3d'].slice(0, 3).join(', ');
+                            const coordDiv = $('<div></div>').text(coordText);
+                            coordinatesContainerLeft.append(coordDiv);
+                        });
+                        fetchAndDisplayCoordinates(coordinatesContainerRight);
+                        if (response.tolerance_satisfied) {
+                            coordinatesContainerLeft.css('color', '#eedb2b');
+                            coordinatesContainerRight.css('color', '#eedb2b');
+                        } else {
+                            coordinatesContainerLeft.css('color', 'darkred');
+                            coordinatesContainerRight.css('color', 'darkred');
+                        }
+                        selectedPoints = [];
+                        pointSelected = false;
+                        $('#select-button').prop('disabled', true);
+                        setTimeout(() => {
+                            coordinatesContainerLeft.empty();
+                            coordinatesContainerRight.empty();
+                        }, 2000);
+                        loadNextQuery();
+                        fetchImageSet(currentPage).then(loadImages);
+                    }
+                }
+            });
+        }
+
+        function skipQuery() {
+            resetTimer();
+            $.ajax({
+                type: "POST",
+                url: "/skip_query",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    username: storedUsername,
+                    env_number: environmentNumber,
+                    time_step: timeStep,
+                    elapsed_time: (Date.now() - startTime) / 1000
+                }),
+                success: function(response) {
+                    loadNextQuery();
+                    fetchImageSet(currentPage).then(loadImages);
+                    selectedPoints = [];
+                    pointSelected = false;
+                    $('#select-button').prop('disabled', true);
+                    $('#skip-button').prop('disabled', true);
+                }
+            });
+        }
+
+        function fetchAndDisplayCoordinates() {
+            $.ajax({
+                type: "POST",
+                url: "/get_query_coordinates",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    env_number: environmentNumber,
+                    time_step: timeStep,
+                    query: query
+                }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        const coordinatesContainerRight = $('#coordinates-container-right');
+                        coordinatesContainerRight.empty();
+                        const title = $('<h3></h3>').text('Voxel Map Result');
+                        coordinatesContainerRight.append(title);
+                        const roundedCoordinates = response.xyz_coordinates.slice(0, 3).map(coord => coord.toFixed(2));
+                        const coordText = roundedCoordinates.join(', ');
+                        const coordDiv = $('<div></div>').text(coordText);
+                        coordinatesContainerRight.append(coordDiv);
+                        setTimeout(() => {
+                            coordinatesContainerRight.empty();
+                        }, 2000);
+                    }
+                }
+            });
+        }
+
+        function pauseGame() {
+            isPaused = true;
+            clearInterval(timerInterval);
+            $('#pauseModal').modal('show');
+            $('#skip-button').prop('disabled', true);
+            $('#select-button').prop('disabled', true);
+        }
+
+        function resumeGame() {
+            isPaused = false;
+            $('#pauseModal').modal('hide');
+            startTimer();
+            $('#skip-button').prop('disabled', false);
+            $('#select-button').prop('disabled', false);
+        }
+
+        function sendPauseReasonToBackend(reason) {
+            $.ajax({
+                type: "POST",
+                url: "/save_pause_reason",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    username: storedUsername,
+                    env_number: environmentNumber,
+                    time_step: timeStep,
+                    query: query,
+                    pause_reason: reason
+                }),
+                success: function(response) {
+                    console.log("Pause reason saved:", response);
+                }
+            });
+        }
+
+        $(document).ready(function() {
+            $('#userInfoModal').modal('show');
+            $('#user-info-form').on('submit', function(event) {
+                event.preventDefault();
+                const username = $('#username').val().trim();
+                const email = $('#email').val().trim();
+                if (isValidForm(username, email)) {
+                    $.ajax({
+                        type: "POST",
+                        url: "/save_user_info",
+                        contentType: "application/json",
+                        data: JSON.stringify({ username: username, email: email }),
+                        success: function(response) {
+                            if (response.status === 'success') {
+                                $('#userInfoModal').modal('hide');
+                                storedUsername = username;
+                                userInfoSubmitted = true;
+                                loadNextEnvAndTimeStep();
+                            }
+                        }
+                    });
+                }
+            });
+        });
+
+        function isValidForm(username, email) {
+            return username !== '' && email !== '' && !/\s/.test(username);
+        }
+
+        $(document).ready(function() {
+            setTimeout(() => {
+                $('.loading-screen').removeClass('active');
+                $('.main-interface').addClass('active');
+                loadNextEnvAndTimeStep();
+            }, 3000);
+            $('#image-grid-container').on('mouseenter', '.grid-image-wrapper', function() {
+                const $this = $(this);
+                hoverTimeout = setTimeout(function() {
+                    $this.addClass('enlarged');
+                    $this.siblings().find('img, .serial-number-badge').removeClass('remove-blur').addClass('blurred');
+                }, 500);
+            }).on('mouseleave', '.grid-image-wrapper', function() {
+                const $this = $(this);
+                clearTimeout(hoverTimeout);
+                $this.removeClass('enlarged');
+                $this.siblings().find('img, .serial-number-badge').removeClass('blurred').addClass('remove-blur');
+            });
+            $('#select-button').click(function() {
+                if (!userInfoSubmitted) return;
+                resetTimer();
+                saveSelectedPoints();
+            });
+            $('#pause-button').click(function() {
+                if (!userInfoSubmitted) return;
+                pauseGame();
+            });
+
+            $('#pauseContinue').click(function() {
+                const selectedOption = $('input[name="pauseReason"]:checked').val();
+                if (selectedOption) {
+                    sendPauseReasonToBackend(selectedOption);
+                }
+                resumeGame();
+            });
+
+            $('#skip-button').click(function() {
+                if (!userInfoSubmitted) return;
+                skipQuery();
+            });
+            $('#right-arrow').click(function() {
+                if (!userInfoSubmitted) return;
+                currentPage++;
+                fetchImageSet(currentPage).then(loadImages);
+            });
+            $('#left-arrow').click(function() {
+                if (!userInfoSubmitted) return;
+                if (currentPage > 0) {
+                    currentPage--;
+                    fetchImageSet(currentPage).then(loadImages);
+                }
+            });
+            $(document).keydown(function(e) {
+                if (!userInfoSubmitted) return;
+
+                if (e.key === 'ArrowRight') {
+                    $('#right-arrow').click();
+                } else if (e.key === 'ArrowLeft') {
+                    $('#left-arrow').click();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
